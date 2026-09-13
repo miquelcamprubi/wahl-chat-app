@@ -1,4 +1,8 @@
 import type { WahlChatUser } from '@/components/anonymous-auth';
+import {
+  getCurrentVisitId,
+  getPageVisitSnapshot,
+} from '@/lib/page-visit/page-visit';
 import type { ProlificMetadata } from '@/lib/prolific-study/prolific-metadata';
 import type {
   GroupedMessage,
@@ -71,6 +75,68 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
   }
 }
 
+export async function upsertPageVisit(payload: {
+  visitId: string;
+  userId: string;
+  visibleMs: number;
+  startedAtMs: number;
+  landingPath: string;
+  lastPath: string;
+  contextId?: string;
+  tenantId?: string;
+  embedded?: boolean;
+  chatSessionId?: string;
+  includeCreateFields?: boolean;
+}): Promise<void> {
+  const data: Record<string, unknown> = {
+    user_id: payload.userId,
+    last_seen_at: Timestamp.now(),
+    visible_ms: payload.visibleMs,
+    last_path: payload.lastPath,
+  };
+  if (payload.includeCreateFields) {
+    data.started_at = Timestamp.fromMillis(payload.startedAtMs);
+    data.landing_path = payload.landingPath;
+    if (payload.embedded) {
+      data.embedded = true;
+    }
+  }
+  if (payload.contextId) {
+    data.context_id = payload.contextId;
+  }
+  if (payload.tenantId) {
+    data.tenant_id = payload.tenantId;
+  }
+  if (payload.chatSessionId) {
+    data.chat_session_ids = arrayUnion(payload.chatSessionId);
+  }
+  await setDoc(doc(db, 'page_visits', payload.visitId), data, { merge: true });
+}
+
+export async function attachChatSessionToPageVisit(
+  visitId: string,
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  const snapshot = getPageVisitSnapshot();
+  await setDoc(
+    doc(db, 'page_visits', visitId),
+    {
+      user_id: userId,
+      last_seen_at: Timestamp.now(),
+      chat_session_ids: arrayUnion(sessionId),
+      ...(snapshot && !snapshot.firestoreCreated
+        ? {
+            started_at: Timestamp.fromMillis(snapshot.startedAtMs),
+            visible_ms: snapshot.visibleMs,
+            landing_path: snapshot.landingPath,
+          }
+        : {}),
+    },
+    { merge: true },
+  );
+}
+
 export async function createChatSession(
   userId: string,
   partyIds: string[],
@@ -79,6 +145,7 @@ export async function createChatSession(
   contextId?: string,
   prolificMetadata?: ProlificMetadata,
 ): Promise<void> {
+  const visitId = getCurrentVisitId();
   await setDoc(doc(db, 'chat_sessions', sessionId), {
     user_id: userId,
     party_ids: partyIds,
@@ -89,7 +156,15 @@ export async function createChatSession(
     ...(prolificMetadata
       ? { prolific_metadata: prolificMetadata, is_prolific_study: true }
       : {}),
+    ...(visitId ? { visit_id: visitId } : {}),
   });
+  if (visitId) {
+    void attachChatSessionToPageVisit(visitId, sessionId, userId).catch(
+      (error) => {
+        console.error('Failed to attach chat session to page visit', error);
+      },
+    );
+  }
 }
 
 export async function getUsersChatHistory(uid: string): Promise<ChatSession[]> {

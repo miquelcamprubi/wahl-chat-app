@@ -1,7 +1,7 @@
 import type { WahlChatUser } from '@/components/anonymous-auth';
 import {
   getCurrentVisitId,
-  getPageVisitSnapshot,
+  getOrLoadPageVisitSnapshot,
 } from '@/lib/page-visit/page-visit';
 import type { ProlificMetadata } from '@/lib/prolific-study/prolific-metadata';
 import type {
@@ -118,23 +118,26 @@ export async function attachChatSessionToPageVisit(
   sessionId: string,
   userId: string,
 ): Promise<void> {
-  const snapshot = getPageVisitSnapshot();
-  await setDoc(
-    doc(db, 'page_visits', visitId),
-    {
-      user_id: userId,
+  const snapshot = getOrLoadPageVisitSnapshot();
+  const ref = doc(db, 'page_visits', visitId);
+  const existing = await getDoc(ref);
+  if (existing.exists()) {
+    // Do not rewrite visible_ms — a heartbeat may already have flushed a
+    // higher value, and the rules reject a decrease.
+    await updateDoc(ref, {
       last_seen_at: Timestamp.now(),
       chat_session_ids: arrayUnion(sessionId),
-      ...(snapshot && !snapshot.firestoreCreated
-        ? {
-            started_at: Timestamp.fromMillis(snapshot.startedAtMs),
-            visible_ms: snapshot.visibleMs,
-            landing_path: snapshot.landingPath,
-          }
-        : {}),
-    },
-    { merge: true },
-  );
+    });
+    return;
+  }
+  await setDoc(ref, {
+    user_id: userId,
+    last_seen_at: Timestamp.now(),
+    chat_session_ids: arrayUnion(sessionId),
+    started_at: Timestamp.fromMillis(snapshot.startedAtMs),
+    visible_ms: snapshot.visibleMs,
+    landing_path: snapshot.landingPath,
+  });
 }
 
 export async function createChatSession(

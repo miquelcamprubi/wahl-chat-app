@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import {
   PAGE_VISIT_MAX_VISIBLE_MS,
+  checkpointVisibleMs,
   contextIdFromPath,
   currentVisibleMs,
   ensurePageVisitRuntime,
@@ -104,5 +105,17 @@ describe('page visit accumulator', () => {
     expect(snapshot.firestoreCreated).toBe(false);
     markPageVisitCreated();
     expect(loadOrCreatePageVisitSnapshot('/').firestoreCreated).toBe(true);
+  });
+
+  it('checkpoints an open segment so a crash restore is not behind Firestore', () => {
+    ensurePageVisitRuntime('/', 0);
+    startVisibleSegment(0);
+    expect(checkpointVisibleMs(5_000)).toBe(5_000);
+    const visitId = getCurrentVisitId();
+
+    resetPageVisitRuntimeForTests();
+    const restored = loadOrCreatePageVisitSnapshot('/', 9_999);
+    expect(restored.visitId).toBe(visitId);
+    expect(restored.visibleMs).toBe(5_000);
   });
 });

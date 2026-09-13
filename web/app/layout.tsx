@@ -194,7 +194,7 @@ export default async function RootLayout({
                 <Toaster expand duration={1500} position="top-right" />
                 {/* <LoginReminderToast /> */}
                 {/* TODO: implement again when problems are fixed <IframeChecker /> */}
-                <PageVisitProvider />
+                <PageVisitProvider embedded={IS_EMBEDDED} />
                 <Analytics />
               </LazyMotion>
             </body>

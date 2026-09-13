@@ -21,6 +21,13 @@ function optionalString(value: unknown): string | undefined {
     : undefined;
 }
 
+// Firebase ID tokens are JWTs (~900–2000 chars). Do not reuse the path cap.
+function optionalIdToken(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    ? value
+    : undefined;
+}
+
 export function parsePageVisitFlushBody(
   body: unknown,
 ): { ok: true; data: PageVisitFlushBody } | { ok: false; error: string } {
@@ -56,7 +63,7 @@ export function parsePageVisitFlushBody(
       contextId: optionalString(record.context_id),
       tenantId: optionalString(record.tenant_id),
       embedded: record.embedded === true,
-      idToken: optionalString(record.id_token),
+      idToken: optionalIdToken(record.id_token),
     },
   };
 }

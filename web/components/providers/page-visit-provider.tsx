@@ -12,9 +12,12 @@ import {
   flushPageVisit,
   flushPageVisitOnHide,
 } from '@/lib/page-visit/page-visit-flush';
-import { IS_EMBEDDED } from '@/lib/utils';
-import { usePathname } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
+
+type Props = {
+  embedded?: boolean;
+};
 
 function isDocumentVisible(): boolean {
   return (
@@ -22,9 +25,10 @@ function isDocumentVisible(): boolean {
   );
 }
 
-function PageVisitProvider() {
+function PageVisitProvider({ embedded = false }: Props) {
   const { user, loading } = useAnonymousAuth();
   const tenant = useTenant();
+  const params = useParams<{ contextId?: string }>();
   const pathname = usePathname() ?? '/';
   const pathnameRef = useRef(pathname);
   const tokenRef = useRef<string | undefined>(undefined);
@@ -57,7 +61,9 @@ function PageVisitProvider() {
       userId: user.uid,
       pathname: window.location.pathname || pathnameRef.current,
       tenantId: tenant?.id,
-      embedded: IS_EMBEDDED,
+      contextId:
+        typeof params.contextId === 'string' ? params.contextId : undefined,
+      embedded,
       idToken: tokenRef.current,
     });
 
@@ -109,7 +115,7 @@ function PageVisitProvider() {
       window.clearInterval(heartbeat);
       window.clearInterval(tokenRefresh);
     };
-  }, [loading, tenant?.id, user?.uid]);
+  }, [embedded, loading, params.contextId, tenant?.id, user?.uid]);
 
   return null;
 }

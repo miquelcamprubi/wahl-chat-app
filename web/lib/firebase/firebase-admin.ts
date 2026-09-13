@@ -7,139 +7,14 @@ import type {
   MessageItem,
 } from '@/lib/stores/chat-store.types';
 import { firestoreTimestampToDate } from '@/lib/utils';
-import { credential } from 'firebase-admin';
-import {
-  type App as FirebaseApp,
-  getApp,
-  initializeApp,
-} from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import {
-  type Firestore,
-  Timestamp,
-  getFirestore,
-} from 'firebase-admin/firestore';
+import { Timestamp } from 'firebase-admin/firestore';
 import { unstable_cache as cache } from 'next/cache';
+import { getAdminDb } from './firebase-admin-app';
 import { getCurrentUser } from './firebase-server';
 import type { ShareableChatSessionSnapshot, Tenant } from './firebase.types';
 
-// Lazily initialize the Firebase Admin app + Firestore on first use rather than
-// at module load. Importing this module (e.g. from app/layout.tsx, which every
-// page pulls in) must not require Firebase env vars at build time — the env check
-// only runs when a server action actually touches Firestore at request time,
-// where credentials are present. Keeps `next build` secret-independent.
-let _db: Firestore | undefined;
-
-function getAdminApp(): FirebaseApp {
-  getDb();
-  return getApp();
-}
-
-export async function verifyFirebaseIdToken(idToken: string) {
-  return getAuth(getAdminApp()).verifyIdToken(idToken);
-}
-
-export async function upsertPageVisitFromServer(payload: {
-  visitId: string;
-  userId: string;
-  visibleMs: number;
-  lastPath?: string;
-  landingPath?: string;
-  startedAtMs?: number;
-  contextId?: string;
-  tenantId?: string;
-  embedded?: boolean;
-}): Promise<void> {
-  const ref = getDb().collection('page_visits').doc(payload.visitId);
-  const existing = await ref.get();
-  if (existing.exists && existing.data()?.user_id !== payload.userId) {
-    throw new Error('Page visit does not belong to this user');
-  }
-
-  const existingVisibleMs =
-    typeof existing.data()?.visible_ms === 'number'
-      ? existing.data()?.visible_ms
-      : 0;
-  const visibleMs = Math.max(existingVisibleMs ?? 0, payload.visibleMs);
-
-  const data: Record<string, unknown> = {
-    user_id: payload.userId,
-    last_seen_at: Timestamp.now(),
-    visible_ms: visibleMs,
-  };
-  if (!existing.exists) {
-    data.started_at = payload.startedAtMs
-      ? Timestamp.fromMillis(payload.startedAtMs)
-      : Timestamp.now();
-    if (payload.landingPath) {
-      data.landing_path = payload.landingPath;
-    }
-    if (payload.embedded) {
-      data.embedded = true;
-    }
-  }
-  if (payload.lastPath) {
-    data.last_path = payload.lastPath;
-  }
-  if (payload.contextId) {
-    data.context_id = payload.contextId;
-  }
-  if (payload.tenantId) {
-    data.tenant_id = payload.tenantId;
-  }
-
-  await ref.set(data, { merge: true });
-}
-
-function getDb(): Firestore {
-  if (_db) {
-    return _db;
-  }
-
-  let app: FirebaseApp;
-
-  try {
-    app = getApp();
-  } catch (error) {
-    console.log('Initializing Firebase Admin App', error);
-
-    const { NEXT_PUBLIC_FIREBASE_PROJECT_ID, FIRESTORE_EMULATOR_HOST } =
-      process.env;
-
-    // Against the local emulator (FIRESTORE_EMULATOR_HOST set) the Admin SDK
-    // routes to the emulator and needs no service-account credentials — a
-    // project id is enough. Only require real creds when talking to a real
-    // project.
-    if (FIRESTORE_EMULATOR_HOST) {
-      if (!NEXT_PUBLIC_FIREBASE_PROJECT_ID) {
-        throw new Error(
-          'NEXT_PUBLIC_FIREBASE_PROJECT_ID is required to use the Firestore emulator.',
-        );
-      }
-      app = initializeApp({ projectId: NEXT_PUBLIC_FIREBASE_PROJECT_ID });
-    } else {
-      const { FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY } = process.env;
-
-      if (
-        !NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
-        !FIREBASE_CLIENT_EMAIL ||
-        !FIREBASE_PRIVATE_KEY
-      ) {
-        throw new Error('Missing Firebase environment variables.');
-      }
-
-      app = initializeApp({
-        credential: credential.cert({
-          projectId: NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-          clientEmail: FIREBASE_CLIENT_EMAIL,
-          privateKey: FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-        }),
-      });
-    }
-  }
-
-  _db = getFirestore(app);
-  return _db;
+function getDb() {
+  return getAdminDb();
 }
 
 export async function createShareableSession(sessionId: string) {

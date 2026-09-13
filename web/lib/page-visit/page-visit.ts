@@ -187,8 +187,27 @@ export function currentVisibleMs(now = Date.now()): number {
   );
 }
 
+// Persist the value we are about to flush so a crash/restore cannot fall
+// behind Firestore and fail the monotonic visible_ms rule.
+export function checkpointVisibleMs(now = Date.now()): number {
+  const visibleMs = currentVisibleMs(now);
+  if (!runtime) {
+    return visibleMs;
+  }
+  runtime.snapshot = { ...runtime.snapshot, visibleMs };
+  if (runtime.segmentStartedAt !== null) {
+    runtime.segmentStartedAt = now;
+  }
+  persistPageVisitSnapshot(runtime.snapshot);
+  return visibleMs;
+}
+
 export function getPageVisitSnapshot(): PageVisitSnapshot | null {
   return runtime?.snapshot ?? null;
+}
+
+export function getOrLoadPageVisitSnapshot(pathname = '/'): PageVisitSnapshot {
+  return getPageVisitSnapshot() ?? loadOrCreatePageVisitSnapshot(pathname);
 }
 
 export function contextIdFromPath(pathname: string): string | undefined {

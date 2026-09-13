@@ -1,7 +1,7 @@
 import { upsertPageVisit } from '@/lib/firebase/firebase';
 import {
+  checkpointVisibleMs,
   contextIdFromPath,
-  currentVisibleMs,
   ensurePageVisitRuntime,
   getPageVisitSnapshot,
   markPageVisitCreated,
@@ -12,20 +12,23 @@ export type PageVisitFlushContext = {
   userId: string;
   pathname: string;
   tenantId?: string;
+  contextId?: string;
   embedded?: boolean;
   idToken?: string;
 };
 
 let flushInFlight = false;
 let flushQueued = false;
-let queuedBeacon = false;
 let queuedContext: PageVisitFlushContext | null = null;
 
 export function resetPageVisitFlushForTests(): void {
   flushInFlight = false;
   flushQueued = false;
-  queuedBeacon = false;
   queuedContext = null;
+}
+
+function resolveContextId(ctx: PageVisitFlushContext): string | undefined {
+  return ctx.contextId ?? contextIdFromPath(ctx.pathname);
 }
 
 function buildPayload(ctx: PageVisitFlushContext, visibleMs: number) {
@@ -38,19 +41,19 @@ function buildPayload(ctx: PageVisitFlushContext, visibleMs: number) {
     startedAtMs: snapshot.startedAtMs,
     landingPath: snapshot.landingPath,
     lastPath: ctx.pathname || snapshot.landingPath,
-    contextId: contextIdFromPath(ctx.pathname),
+    contextId: resolveContextId(ctx),
     tenantId: ctx.tenantId,
     embedded: ctx.embedded,
     includeCreateFields: !snapshot.firestoreCreated,
   };
 }
 
-async function sendBeaconFlush(
+export function sendUnloadFlush(
   ctx: PageVisitFlushContext,
   visibleMs: number,
-): Promise<void> {
-  if (typeof fetch !== 'function' || !ctx.idToken) {
-    return;
+): boolean {
+  if (!ctx.idToken) {
+    return false;
   }
   const snapshot =
     getPageVisitSnapshot() ?? ensurePageVisitRuntime(ctx.pathname);
@@ -60,71 +63,59 @@ async function sendBeaconFlush(
     last_path: ctx.pathname || snapshot.landingPath,
     landing_path: snapshot.landingPath,
     started_at_ms: snapshot.startedAtMs,
-    context_id: contextIdFromPath(ctx.pathname),
+    context_id: resolveContextId(ctx),
     tenant_id: ctx.tenantId,
     embedded: ctx.embedded === true,
+    id_token: ctx.idToken,
   };
-  try {
-    await fetch('/api/page-visit', {
+  const json = JSON.stringify(body);
+  if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+    return navigator.sendBeacon(
+      '/api/page-visit',
+      new Blob([json], { type: 'application/json' }),
+    );
+  }
+  if (typeof fetch === 'function') {
+    void fetch('/api/page-visit', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${ctx.idToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: json,
       keepalive: true,
     });
-  } catch {
-    if (typeof navigator === 'undefined' || !navigator.sendBeacon) {
-      return;
-    }
-    const blob = new Blob(
-      [JSON.stringify({ ...body, id_token: ctx.idToken })],
-      {
-        type: 'application/json',
-      },
-    );
-    navigator.sendBeacon('/api/page-visit', blob);
+    return true;
   }
+  return false;
 }
 
-async function runFlush(
-  ctx: PageVisitFlushContext,
-  beacon: boolean,
-): Promise<void> {
-  const visibleMs = currentVisibleMs();
+async function runFlush(ctx: PageVisitFlushContext): Promise<void> {
+  const visibleMs = checkpointVisibleMs();
   try {
     await upsertPageVisit(buildPayload(ctx, visibleMs));
     markPageVisitCreated();
   } catch (error) {
     console.error('Failed to upsert page visit', error);
   }
-  if (beacon) {
-    void sendBeaconFlush(ctx, visibleMs);
-  }
 }
 
 export async function flushPageVisit(
   ctx: PageVisitFlushContext,
-  options?: { beacon?: boolean },
 ): Promise<void> {
-  const beacon = options?.beacon === true;
   if (flushInFlight) {
     flushQueued = true;
-    queuedBeacon = queuedBeacon || beacon;
     queuedContext = ctx;
     return;
   }
   flushInFlight = true;
   try {
-    await runFlush(ctx, beacon);
+    await runFlush(ctx);
     while (flushQueued && queuedContext) {
       const next = queuedContext;
-      const nextBeacon = queuedBeacon;
       flushQueued = false;
-      queuedBeacon = false;
       queuedContext = null;
-      await runFlush(next, nextBeacon);
+      await runFlush(next);
     }
   } finally {
     flushInFlight = false;
@@ -133,5 +124,7 @@ export async function flushPageVisit(
 
 export function flushPageVisitOnHide(ctx: PageVisitFlushContext): void {
   stopVisibleSegment();
-  void flushPageVisit(ctx, { beacon: true });
+  const visibleMs = checkpointVisibleMs();
+  sendUnloadFlush(ctx, visibleMs);
+  void flushPageVisit(ctx);
 }

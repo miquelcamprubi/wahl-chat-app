@@ -30,4 +30,17 @@ describe('parsePageVisitFlushBody', () => {
       parsePageVisitFlushBody({ visit_id: VISIT_ID, visible_ms: '12' }).ok,
     ).toBe(false);
   });
+
+  it('keeps a Firebase-sized id token', () => {
+    const idToken = `header.${'a'.repeat(900)}.signature`;
+    const parsed = parsePageVisitFlushBody({
+      visit_id: VISIT_ID,
+      visible_ms: 10,
+      id_token: idToken,
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.data.idToken).toBe(idToken);
+    }
+  });
 });

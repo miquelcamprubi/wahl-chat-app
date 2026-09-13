@@ -1,7 +1,7 @@
 import {
   upsertPageVisitFromServer,
   verifyFirebaseIdToken,
-} from '@/lib/firebase/firebase-admin';
+} from '@/lib/firebase/page-visit-admin';
 import { parsePageVisitFlushBody } from '@/lib/page-visit/page-visit-request';
 import { type NextRequest, NextResponse } from 'next/server';
 

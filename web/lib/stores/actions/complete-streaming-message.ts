@@ -7,6 +7,7 @@ import type {
   PledgeTrackerSuggestions,
 } from '@/lib/stores/chat-store.types';
 import { generateUuid } from '@/lib/utils';
+import { track } from '@vercel/analytics';
 import { Timestamp } from 'firebase/firestore';
 
 const buildNewMessage = (
@@ -101,6 +102,17 @@ export const completeStreamingMessage: ChatStoreActionHandlerFor<
           pledgeTracker;
       }
     });
+
+    // "The feature had something to show for this answer": exact and DOM-free
+    // (once per live party_complete, never for rehydrated history). Real
+    // exposure is measured separately by the card's viewport impression.
+    if (pledgeTracker?.pledges?.length) {
+      track('pledge_tracker_offered', {
+        party: partyId,
+        message_id: currentStreamingMessage.id,
+        pledges: pledgeTracker.pledges.length,
+      });
+    }
 
     const safeGroupedMessageId = currentStreamingMessages.id ?? generateUuid();
 

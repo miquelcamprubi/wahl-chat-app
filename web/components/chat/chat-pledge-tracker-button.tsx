@@ -6,7 +6,7 @@ import type { StreamingMessage } from '@/lib/socket.types';
 import type { MessageItem } from '@/lib/stores/chat-store.types';
 import { track } from '@vercel/analytics/react';
 import { ChevronRight, SquareCheckBig } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Props = {
   partyId: string;
@@ -19,9 +19,13 @@ type Props = {
 // draws attention until the user opens PledgeTracker once, then calms down.
 const PLEDGE_TRACKER_OPENED_KEY = 'wahlchat.pledgeTrackerOpened';
 
-// Impression dedupe: one event per message per page load, so re-renders and
-// StrictMode double-mounts never double-count.
-const trackedImpressions = new Set<string>();
+// Real-exposure impression: fired once per message when the card is >=50%
+// visible for a dwell period (IntersectionObserver), deduped across reloads
+// via sessionStorage. Mount alone is NOT exposure — reloads rehydrate history,
+// group-chat carousels render every slide into the DOM, and far-off-screen
+// messages mount too, all of which would inflate the CTR denominator.
+const IMPRESSION_KEY_PREFIX = 'wahlchat.ptImpression.';
+const IMPRESSION_DWELL_MS = 1000;
 
 function ChatPledgeTrackerButton({
   partyId,
@@ -31,9 +35,11 @@ function ChatPledgeTrackerButton({
 }: Props) {
   const [showGlow, setShowGlow] = useState(false);
 
-  // The trigger IS the pledge card (design review): party tile + the first
-  // matched pledge's claim — the popup card without its date/source line.
-  const claim = getVisiblePledges(message.pledge_tracker)[0]?.claim;
+  // The trigger IS the pledge card (design review): the first matched
+  // pledge's claim — the popup card without its date/source line.
+  const visiblePledges = getVisiblePledges(message.pledge_tracker);
+  const claim = visiblePledges[0]?.claim;
+  const pledges = visiblePledges.length;
 
   useEffect(() => {
     try {
@@ -45,21 +51,65 @@ function ChatPledgeTrackerButton({
     }
   }, []);
 
-  // The card only renders when pledge suggestions exist, so mounting IS the
-  // impression (exposure) — tracked once per message.
-  useEffect(() => {
-    if (trackedImpressions.has(message.id)) return;
-    trackedImpressions.add(message.id);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const impressionFiredRef = useRef(false);
+
+  // Claim the impression exactly once per message: sessionStorage dedupes
+  // across reloads and re-mounts; the ref covers storage-less browsers.
+  const claimImpression = useCallback(() => {
+    if (impressionFiredRef.current) return;
+    impressionFiredRef.current = true;
+    try {
+      const key = IMPRESSION_KEY_PREFIX + message.id;
+      if (window.sessionStorage.getItem(key) === 'true') return;
+      window.sessionStorage.setItem(key, 'true');
+    } catch {
+      // Storage unavailable: the ref still dedupes within this page load.
+    }
     track('pledge_tracker_impression', {
       party: partyId,
-      message: message.content ?? 'empty-message',
+      message_id: message.id,
+      pledges,
     });
-  }, [message.id, message.content, partyId]);
+  }, [message.id, partyId, pledges]);
+
+  // Exposure = >=50% visible held for the dwell period. An inactive carousel
+  // slide or an off-screen message reports ratio 0 (CarouselContent clips
+  // with overflow-hidden), so no carousel-specific handling is needed.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let timer: number | null = null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[entries.length - 1];
+        if (entry.intersectionRatio >= 0.5) {
+          timer ??= window.setTimeout(() => {
+            claimImpression();
+            observer.disconnect();
+          }, IMPRESSION_DWELL_MS);
+        } else if (timer !== null) {
+          window.clearTimeout(timer);
+          timer = null;
+        }
+      },
+      { threshold: [0, 0.5] },
+    );
+    observer.observe(el);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [claimImpression]);
 
   const handleClick = () => {
+    // A click inside the dwell window still counts as an impression first —
+    // otherwise CTR could exceed 100%.
+    claimImpression();
     track('pledge_tracker_button_clicked', {
       party: partyId,
-      message: message.content ?? 'empty-message',
+      message_id: message.id,
+      pledges,
     });
     setShowGlow(false);
     try {
@@ -71,7 +121,7 @@ function ChatPledgeTrackerButton({
   };
 
   return (
-    <div className="relative basis-full rounded-xl">
+    <div ref={containerRef} className="relative basis-full rounded-xl">
       <button
         type="button"
         aria-label={claim ? `PledgeTracker: ${claim}` : 'PledgeTracker'}

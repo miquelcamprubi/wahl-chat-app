@@ -12,11 +12,16 @@ Tests defined here:
   - test_last_activity_counts_failed_attempts: pledgetracker_last_attempted_at
     advances the ordering key, so a recently failed pledge yields its batch
     slot to pledges with older activity.
+  - test_stale_pledge_ids_flags_only_missing: reconcile deletes exactly the
+    store ids absent from the registry.
 """
 
 from __future__ import annotations
 
-from src.ingestion.connectors.pledgetracker.bulk import _last_activity
+from src.ingestion.connectors.pledgetracker.bulk import (
+    _last_activity,
+    _stale_pledge_ids,
+)
 
 
 def test_last_activity_orders_never_touched_first() -> None:
@@ -36,3 +41,9 @@ def test_last_activity_counts_failed_attempts() -> None:
     )
     checked_later = _last_activity({"last_checked_at": "2026-01-15T00:00:00+00:00"})
     assert failed_recently > checked_later
+
+
+def test_stale_pledge_ids_flags_only_missing() -> None:
+    """Ids in the stores but not in the registry are stale; the rest are kept."""
+    assert _stale_pledge_ids({"a", "b"}, ["a", "b", "c"]) == {"c"}
+    assert _stale_pledge_ids({"a"}, []) == set()

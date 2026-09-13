@@ -268,7 +268,11 @@ optional `bundesland`/`party_id`/source metadata). Bundesländer map to ISO
 elements. The runner is incremental: a freshness watermark skips pledges checked
 within `--freshness-days` (default 7), interrupted runs resume via the job id
 persisted on the Firestore doc, and `--batch-size` (default 3) bounds each
-invocation — sized for the 15-minute scheduled-job cap.
+invocation — sized for the 15-minute scheduled-job cap. Pledge identity is
+`party_id:claim:region:pledge_date`, so NEVER reword a claim in place — a live
+run ends with a reconcile that retires store pledges no longer in the registry
+(edited claims, removed rows), scoped to the registry's own regions
+(`--skip-reconcile` opts out).
 
 Requires `PLEDGETRACKER_API_KEY` in `ai-backend/.env` (gitignored — never commit
 it) and `PLEDGETRACKER_ENABLE_LIVE=true`; without them the runner ingests the

@@ -35,8 +35,16 @@ def _record() -> PledgeRecord:
         {
             "status": "success",
             "events": [
-                {"date": "2026-01-05", "event": "Langer Satz über DEGES-Ausschreibungen.", "label": "Ja"},
-                {"date": "2025-06-01", "event": "Langer Satz über den Planungsstand der A143.", "label": "Ja"},
+                {
+                    "date": "2026-01-05",
+                    "event": "Langer Satz über DEGES-Ausschreibungen.",
+                    "label": "Ja",
+                },
+                {
+                    "date": "2025-06-01",
+                    "event": "Langer Satz über den Planungsstand der A143.",
+                    "label": "Ja",
+                },
             ],
         },
     )

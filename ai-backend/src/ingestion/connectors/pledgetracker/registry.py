@@ -152,17 +152,19 @@ class PledgeInput(BaseModel):
     def resolved_pledge_id(self) -> str:
         """Deterministic pledge id.
 
-        MUST stay ``party_id:claim:region`` so re-ingesting a pledge upserts the
-        same Firestore doc and Qdrant point instead of duplicating them.
+        MUST stay ``party_id:claim:region:pledge_date`` so re-ingesting a
+        pledge upserts the same Firestore doc and Qdrant point instead of
+        duplicating them. ``pledge_date`` is part of the identity: the same
+        wording pledged in different years (two manifesto cycles) is two
+        pledges with two evidence timelines, not one record that the later
+        run overwrites.
         """
         if self.pledge_id:
             return self.pledge_id
-        return str(
-            compute_source_item_id(
-                SourceType.PLEDGE_RECORD.value,
-                f"{self.resolved_party_id()}:{self.claim}:{self.region}",
-            )
+        seed = (
+            f"{self.resolved_party_id()}:{self.claim}:{self.region}:{self.pledge_date}"
         )
+        return str(compute_source_item_id(SourceType.PLEDGE_RECORD.value, seed))
 
     def job_inputs(self) -> dict:
         """The exact payload for POST /jobs ``inputs``."""

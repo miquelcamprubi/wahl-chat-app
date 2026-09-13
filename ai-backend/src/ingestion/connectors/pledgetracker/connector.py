@@ -161,10 +161,12 @@ class PledgeTrackerConnector(BaseConnector):
         region_path = raw.get("region_path") or ["DE"]
         region = raw.get("region") or region_path[-1]
 
+        # Same identity seed as PledgeInput.resolved_pledge_id (incl. the date:
+        # the same wording pledged in different years is two pledges).
         pledge_id = raw.get("pledge_id") or str(
             compute_source_item_id(
                 SourceType.PLEDGE_RECORD.value,
-                f"{party_id}:{claim}:{region}",
+                f"{party_id}:{claim}:{region}:{raw.get('pledge_date') or ''}",
             )
         )
 

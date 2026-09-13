@@ -22,7 +22,10 @@ chunk). Because runs are slow and serialized, the runner is incremental:
     for the 15-minute scheduled-job cap, like the other incremental runners);
   - bounded retries: failures stamp ``pledgetracker_last_attempted_at`` and the
     batch takes the least-recently-touched pledges first, so a permanently
-    failing pledge cannot occupy a batch slot on every run.
+    failing pledge cannot occupy a batch slot on every run;
+  - reconcile: after a live run, pledges present in the stores but absent from
+    the registry (edited claims, removed rows) are retired, scoped to the
+    registry's own regions (``--skip-reconcile`` opts out).
 
 Usage (local):
     FIRESTORE_EMULATOR_HOST=localhost:8081 PLEDGETRACKER_ENABLE_LIVE=true \
@@ -35,11 +38,12 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import NamedTuple, Optional
 
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 from src.ingestion.connectors.pledgetracker.client import PledgeQueueClient
 from src.ingestion.connectors.pledgetracker.connector import PledgeTrackerConnector
@@ -49,6 +53,7 @@ from src.ingestion.connectors.pledgetracker.registry import (
 )
 from src.ingestion.connectors.pledgetracker.titles import add_short_titles
 from src.ingestion.run import RunReport, _embed_texts, _upsert_chunks
+from src.ingestion.schemas import SourceType
 from src.ingestion.setup_collection import COLLECTION_NAME, check_fingerprint
 from src.models.pledge_tracker import PledgeRecord
 
@@ -373,6 +378,89 @@ def run_pledgetracker_live(
     )
 
 
+def _stale_pledge_ids(registry_ids: set[str], existing_ids: Iterable[str]) -> set[str]:
+    """Pledge ids present in the stores but absent from the registry."""
+    return {pledge_id for pledge_id in existing_ids if pledge_id not in registry_ids}
+
+
+def reconcile_registry(
+    qdrant: QdrantClient,
+    db,  # type: ignore[no-untyped-def]
+    pledge_inputs: list[PledgeInput],
+    collection_name: str = COLLECTION_NAME,
+) -> tuple[int, int]:
+    """Retire pledges that are no longer in the registry (edited or removed).
+
+    The pledge id contains the claim text, so editing a claim mints a NEW id —
+    without this step the old Firestore doc and Qdrant point stay publicly
+    readable and retrievable forever (same for deleted rows). Scoped to the
+    registry's own regions so one registry can never delete another registry's
+    pledges — the pledge-side equivalent of the manifesto supersede rule.
+
+    Returns:
+        (qdrant_points_deleted, firestore_docs_deleted)
+    """
+    registry_ids = {pledge.resolved_pledge_id() for pledge in pledge_inputs}
+    regions = {pledge.region for pledge in pledge_inputs}
+    if not regions:
+        return (0, 0)
+
+    # Qdrant: collect pledge_record points inside the registry's regions.
+    point_ids_by_pledge: dict[str, list] = {}
+    scroll_filter = models.Filter(
+        must=[
+            models.FieldCondition(
+                key="source_type",
+                match=models.MatchValue(value=SourceType.PLEDGE_RECORD.value),
+            ),
+            models.FieldCondition(
+                key="region", match=models.MatchAny(any=sorted(regions))
+            ),
+        ]
+    )
+    offset = None
+    while True:
+        points, offset = qdrant.scroll(
+            collection_name=collection_name,
+            scroll_filter=scroll_filter,
+            limit=256,
+            offset=offset,
+            with_payload=["pledge_id"],
+            with_vectors=False,
+        )
+        for point in points:
+            pledge_id = (point.payload or {}).get("pledge_id")
+            if isinstance(pledge_id, str):
+                point_ids_by_pledge.setdefault(pledge_id, []).append(point.id)
+        if offset is None:
+            break
+
+    stale_ids = _stale_pledge_ids(registry_ids, point_ids_by_pledge)
+    stale_point_ids = [
+        point_id
+        for pledge_id in stale_ids
+        for point_id in point_ids_by_pledge[pledge_id]
+    ]
+    if stale_point_ids:
+        qdrant.delete(
+            collection_name=collection_name,
+            points_selector=models.PointIdsList(points=stale_point_ids),
+        )
+
+    # Firestore can be wider than Qdrant (e.g. a crash left a doc without a
+    # vector), so scan the collection too — same region scope.
+    docs_deleted = 0
+    for snapshot in db.collection("pledges").stream():
+        data = snapshot.to_dict() or {}
+        if data.get("region") not in regions or snapshot.id in registry_ids:
+            continue
+        db.collection("pledges").document(snapshot.id).delete()
+        docs_deleted += 1
+        print(f"reconcile: retired pledge {snapshot.id}")
+
+    return (len(stale_point_ids), docs_deleted)
+
+
 def backfill_titles(db) -> tuple[int, int]:  # type: ignore[no-untyped-def]
     """Add missing event_short headlines to existing Firestore pledge docs.
 
@@ -469,6 +557,14 @@ if __name__ == "__main__":
         help="Print the run plan (submit/resume/skip) without API or store writes",
     )
     parser.add_argument(
+        "--skip-reconcile",
+        action="store_true",
+        help=(
+            "Skip retiring pledges that are in the stores but no longer in the "
+            "registry (reconcile is scoped to the registry's own regions)"
+        ),
+    )
+    parser.add_argument(
         "--allow-remote",
         action="store_true",
         help=(
@@ -563,6 +659,14 @@ if __name__ == "__main__":
             if attempted > 0 and live_report.processed == 0:
                 raise RuntimeError(
                     "Every attempted PledgeTracker job failed — see warnings above."
+                )
+            if not args.skip_reconcile:
+                points_deleted, docs_deleted = reconcile_registry(
+                    qdrant, db, load_pledge_registry(args.registry)
+                )
+                print(
+                    f"reconcile: qdrant_points_deleted={points_deleted} "
+                    f"firestore_docs_deleted={docs_deleted}"
                 )
     except Exception:  # noqa: BLE001
         import traceback

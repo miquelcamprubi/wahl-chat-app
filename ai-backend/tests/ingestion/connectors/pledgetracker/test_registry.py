@@ -14,7 +14,10 @@ Tests defined here:
   - test_party_slug_quarantines_unknown_labels: unknown parties → 'unbekannt'
     (framework convention), never a crash.
   - test_explicit_party_id_override_wins: coalition rows pin the lead party.
-  - test_pledge_id_is_deterministic: same input → same id across instances.
+  - test_pledge_id_is_deterministic: same input → same id across instances;
+    the identity seed is party_id:claim:region:pledge_date.
+  - test_pledge_date_distinguishes_repeated_claims: the same wording pledged in
+    different years is two pledges (two evidence timelines).
   - test_malformed_registry_lines_are_skipped: bad rows warn-and-skip.
 """
 
@@ -103,11 +106,18 @@ def test_pledge_id_is_deterministic() -> None:
     expected = str(
         compute_source_item_id(
             SourceType.PLEDGE_RECORD.value,
-            f"cdu:{pledge.claim}:DE-ST",
+            f"cdu:{pledge.claim}:DE-ST:2021-03-27",
         )
     )
     assert pledge.resolved_pledge_id() == expected
     assert _cdu_input().resolved_pledge_id() == expected
+
+
+def test_pledge_date_distinguishes_repeated_claims() -> None:
+    """The same wording pledged in different years is two pledges."""
+    first = _cdu_input()
+    second = _cdu_input().model_copy(update={"pledge_date": "2016-03-13"})
+    assert first.resolved_pledge_id() != second.resolved_pledge_id()
 
 
 def test_malformed_registry_lines_are_skipped(tmp_path: Path) -> None:

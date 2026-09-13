@@ -273,7 +273,8 @@ invocation — sized for the 15-minute scheduled-job cap.
 Requires `PLEDGETRACKER_API_KEY` in `ai-backend/.env` (gitignored — never commit
 it) and `PLEDGETRACKER_ENABLE_LIVE=true`; without them the runner ingests the
 packaged demo fixture offline. `FIRESTORE_EMULATOR_HOST` is mandatory unless
-`ENV=prod` (accidental-prod-write guard).
+`ENV=prod` (accidental-write guard); pass `--allow-remote` to deliberately
+ingest into the deployed dev environment without an emulator.
 
 ```bash
 FIRESTORE_EMULATOR_HOST=localhost:8081 make run-pledgetracker ARGS="--dry-run"

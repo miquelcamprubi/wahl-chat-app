@@ -65,14 +65,28 @@ class LiveRunReport(NamedTuple):
     chunks_upserted: int
 
 
-def _guard_firestore_target() -> None:
-    """Prevent accidental dev/local writes to real Firestore."""
+def _guard_firestore_target(allow_remote: bool = False) -> None:
+    """Prevent ACCIDENTAL non-emulator writes outside prod.
+
+    ENV=prod targets real Firestore as before. Every other ENV requires the
+    emulator unless ``--allow-remote`` is passed explicitly — the deliberate
+    path for ingesting pledges into the deployed dev environment.
+    """
     env = os.getenv("ENV", "dev")
-    if env != "prod" and not os.getenv("FIRESTORE_EMULATOR_HOST"):
-        raise RuntimeError(
-            "FIRESTORE_EMULATOR_HOST is required for PledgeTracker ingestion "
-            "when ENV is not prod. Set it to localhost:8081 for local runs."
+    if env == "prod" or os.getenv("FIRESTORE_EMULATOR_HOST"):
+        return
+    if allow_remote:
+        logger.warning(
+            "PledgeTracker ingestion writing to REMOTE Firestore with ENV=%s "
+            "(--allow-remote).",
+            env,
         )
+        return
+    raise RuntimeError(
+        "FIRESTORE_EMULATOR_HOST is required for PledgeTracker ingestion when "
+        "ENV is not prod. Set it to localhost:8081 for local runs, or pass "
+        "--allow-remote to ingest into a deployed dev environment on purpose."
+    )
 
 
 def _write_pledge_record(db, record: PledgeRecord) -> None:  # type: ignore[no-untyped-def]
@@ -455,6 +469,14 @@ if __name__ == "__main__":
         help="Print the run plan (submit/resume/skip) without API or store writes",
     )
     parser.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help=(
+            "Permit writes to non-emulator Firestore when ENV != prod — the "
+            "explicit path for ingesting into the deployed dev environment"
+        ),
+    )
+    parser.add_argument(
         "--backfill-titles",
         action="store_true",
         help=(
@@ -465,7 +487,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        _guard_firestore_target()
+        _guard_firestore_target(allow_remote=args.allow_remote)
 
         # Import after the emulator guard so firebase_admin never initializes
         # against real Firestore by accident during local development.

@@ -1,6 +1,5 @@
 'use client';
 
-import { ChatMessageIcon } from '@/components/chat/chat-message-icon';
 import { BorderTrail } from '@/components/ui/border-trail';
 import { getVisiblePledges } from '@/lib/pledge-tracker/pledges';
 import type { StreamingMessage } from '@/lib/socket.types';
@@ -82,25 +81,30 @@ function ChatPledgeTrackerButton({
         className="w-full rounded-xl border border-border/60 bg-muted/30 p-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <span className="flex items-start gap-3">
-          <ChatMessageIcon partyId={partyId} shape="tile" />
+          {/* PledgeTracker mark instead of the party tile: the party logo
+              already sits next to the answer, so a second one reads doubled. */}
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 ring-1 ring-emerald-500/30">
+            <SquareCheckBig
+              aria-hidden
+              className="size-5 text-emerald-600 dark:text-emerald-400"
+            />
+          </span>
           <span className="line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">
             {claim ?? 'PledgeTracker'}
           </span>
-          <SquareCheckBig
-            aria-hidden
-            className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
-          />
         </span>
       </button>
       {showGlow && (
         <>
-          {/* Same BorderTrail as the pill-era button: faint traveling square,
-              the green bloom comes from the boxShadow. */}
+          {/* Pill-era BorderTrail, scaled up: the card's perimeter is much
+              longer than the old button's, so the streak (size) and the green
+              bloom are enlarged to read at this width. */}
           <BorderTrail
             className="bg-emerald-300/40"
+            size={160}
             style={{
               boxShadow:
-                '0px 0px 60px 30px rgb(110 231 183 / 55%), 0 0 100px 60px rgb(0 0 0 / 50%), 0 0 140px 90px rgb(0 0 0 / 50%)',
+                '0px 0px 80px 40px rgb(110 231 183 / 55%), 0 0 120px 70px rgb(0 0 0 / 50%), 0 0 160px 100px rgb(0 0 0 / 50%)',
             }}
           />
           <span className="absolute right-[-2px] top-[-2px] flex size-[10px]">

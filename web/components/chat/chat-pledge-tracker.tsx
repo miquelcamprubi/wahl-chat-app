@@ -20,8 +20,9 @@ import type {
   PledgeTimelineEvent,
 } from '@/lib/stores/chat-store.types';
 import { cn } from '@/lib/utils';
+import { track } from '@vercel/analytics/react';
 import { ChevronDown, ExternalLink, SquareCheckBig } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type Props = {
   message: MessageItem;
@@ -39,6 +40,19 @@ type Props = {
 function ChatPledgeTracker({ message, open, onOpenChange }: Props) {
   const pledges = getVisiblePledges(message.pledge_tracker);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  // One modal-view event per actual open TRANSITION: the depless effect runs
+  // every render, the ref confines tracking to closed → open edges.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current && pledges.length > 0) {
+      track('pledge_tracker_modal_viewed', {
+        party: pledges[0].party_id,
+        message: message.content ?? 'empty-message',
+      });
+    }
+    wasOpen.current = Boolean(open);
+  });
 
   if (pledges.length === 0) {
     return null;

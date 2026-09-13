@@ -19,6 +19,10 @@ type Props = {
 // draws attention until the user opens PledgeTracker once, then calms down.
 const PLEDGE_TRACKER_OPENED_KEY = 'wahlchat.pledgeTrackerOpened';
 
+// Impression dedupe: one event per message per page load, so re-renders and
+// StrictMode double-mounts never double-count.
+const trackedImpressions = new Set<string>();
+
 function ChatPledgeTrackerButton({
   partyId,
   message,
@@ -36,6 +40,17 @@ function ChatPledgeTrackerButton({
       setShowGlow(false);
     }
   }, []);
+
+  // The button only renders when pledge suggestions exist, so mounting IS the
+  // impression (exposure) — tracked once per message.
+  useEffect(() => {
+    if (trackedImpressions.has(message.id)) return;
+    trackedImpressions.add(message.id);
+    track('pledge_tracker_impression', {
+      party: partyId,
+      message: message.content ?? 'empty-message',
+    });
+  }, [message.id, message.content, partyId]);
 
   const handleClick = () => {
     track('pledge_tracker_button_clicked', {

@@ -1,7 +1,8 @@
 'use client';
 
+import { ChatMessageIcon } from '@/components/chat/chat-message-icon';
 import { BorderTrail } from '@/components/ui/border-trail';
-import { Button } from '@/components/ui/button';
+import { getVisiblePledges } from '@/lib/pledge-tracker/pledges';
 import type { StreamingMessage } from '@/lib/socket.types';
 import type { MessageItem } from '@/lib/stores/chat-store.types';
 import { track } from '@vercel/analytics/react';
@@ -31,6 +32,10 @@ function ChatPledgeTrackerButton({
 }: Props) {
   const [showGlow, setShowGlow] = useState(false);
 
+  // The trigger IS the pledge card (design review): party tile + the first
+  // matched pledge's claim — the popup card without its date/source line.
+  const claim = getVisiblePledges(message.pledge_tracker)[0]?.claim;
+
   useEffect(() => {
     try {
       setShowGlow(
@@ -41,7 +46,7 @@ function ChatPledgeTrackerButton({
     }
   }, []);
 
-  // The button only renders when pledge suggestions exist, so mounting IS the
+  // The card only renders when pledge suggestions exist, so mounting IS the
   // impression (exposure) — tracked once per message.
   useEffect(() => {
     if (trackedImpressions.has(message.id)) return;
@@ -67,25 +72,30 @@ function ChatPledgeTrackerButton({
   };
 
   return (
-    <div className="relative rounded-md">
-      <Button
-        variant="outline"
-        className="h-8 px-2 group-data-[has-message-background]:bg-zinc-100 group-data-[has-message-background]:hover:bg-zinc-200 group-data-[has-message-background]:dark:bg-zinc-900 group-data-[has-message-background]:dark:hover:bg-zinc-800"
-        tooltip="Verwandte politische Ziele der Partei ansehen (PledgeTracker)"
+    <div className="relative basis-full rounded-xl">
+      <button
+        type="button"
+        aria-label={claim ? `PledgeTracker: ${claim}` : 'PledgeTracker'}
         aria-haspopup="dialog"
         aria-expanded={revealed}
         onClick={handleClick}
+        className="w-full rounded-xl border border-border/60 bg-muted/30 p-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
-        <SquareCheckBig className="text-emerald-600 dark:text-emerald-400" />
-        <span className="text-xs">PledgeTracker</span>
-      </Button>
+        <span className="flex items-start gap-3">
+          <ChatMessageIcon partyId={partyId} shape="tile" />
+          <span className="line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">
+            {claim ?? 'PledgeTracker'}
+          </span>
+          <SquareCheckBig
+            aria-hidden
+            className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+          />
+        </span>
+      </button>
       {showGlow && (
         <>
-          {/* Same BorderTrail config as ChatActionButtonHighlight — default
-              size/speed and the big soft glow — with the traveling square kept
-              faint + light so it reads as a moving glow, not a solid segment.
-              The green bloom comes from the boxShadow, which is independent of
-              the square's opacity. */}
+          {/* Same BorderTrail as the pill-era button: faint traveling square,
+              the green bloom comes from the boxShadow. */}
           <BorderTrail
             className="bg-emerald-300/40"
             style={{

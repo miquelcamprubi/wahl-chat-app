@@ -58,13 +58,21 @@ function ChatSingleMessageActions({
     getVisiblePledges(message.pledge_tracker).length > 0 &&
     !isWahlChatMessage;
 
-  const showSeparator =
-    showProConButton ||
-    showVotingBehaviorSummaryButton ||
-    showPledgeTrackerButton;
+  const showSeparator = showProConButton || showVotingBehaviorSummaryButton;
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+      {/* Full-width pledge card (basis-full): its own line between the answer
+          text and the action pills. */}
+      {showPledgeTrackerButton && (
+        <ChatPledgeTrackerButton
+          partyId={partyId}
+          message={message}
+          revealed={pledgeRevealed}
+          onToggle={onTogglePledgeTracker}
+        />
+      )}
+
       <SourcesButton
         sources={message.sources ?? []}
         messageContent={message.content ?? ''}
@@ -82,15 +90,6 @@ function ChatSingleMessageActions({
           partyId={partyId}
           message={message}
           isLastMessage={isLastMessage}
-        />
-      )}
-
-      {showPledgeTrackerButton && (
-        <ChatPledgeTrackerButton
-          partyId={partyId}
-          message={message}
-          revealed={pledgeRevealed}
-          onToggle={onTogglePledgeTracker}
         />
       )}
 

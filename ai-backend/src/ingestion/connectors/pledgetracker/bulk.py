@@ -19,7 +19,10 @@ chunk). Because runs are slow and serialized, the runner is incremental:
     submit time, so a rerun re-fetches the stored server-side result instead
     of burning another GPU run;
   - bounded batches: at most ``--batch-size`` pledges per invocation (shaped
-    for the 15-minute scheduled-job cap, like the other incremental runners).
+    for the 15-minute scheduled-job cap, like the other incremental runners);
+  - bounded retries: failures stamp ``pledgetracker_last_attempted_at`` and the
+    batch takes the least-recently-touched pledges first, so a permanently
+    failing pledge cannot occupy a batch slot on every run.
 
 Usage (local):
     FIRESTORE_EMULATOR_HOST=localhost:8081 PLEDGETRACKER_ENABLE_LIVE=true \
@@ -100,6 +103,28 @@ def _is_fresh(doc_data: dict, freshness_days: int) -> bool:
     if checked_at is None:
         return False
     return datetime.now(timezone.utc) - checked_at < timedelta(days=freshness_days)
+
+
+_EPOCH = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _last_activity(doc_data: dict) -> datetime:
+    """Most recent successful check OR failed attempt; never-touched → epoch.
+
+    Batch-ordering key: oldest activity first, so pledges that keep failing
+    rotate to the back of the queue instead of starving the rest of the
+    registry, and brand-new pledges go first.
+    """
+    stamps = [
+        _parse_checked_at(doc_data.get("last_checked_at")),
+        _parse_checked_at(doc_data.get("pledgetracker_last_attempted_at")),
+    ]
+    known = [stamp for stamp in stamps if stamp is not None]
+    return max(known) if known else _EPOCH
 
 
 def _resumable_job_id(doc_data: dict) -> Optional[int]:
@@ -195,11 +220,13 @@ def run_pledgetracker_live(
     pledge_inputs = load_pledge_registry(registry_path)
 
     # ------------------------------------------------------------------
-    # Select the batch: first N pledges that are missing or stale.
+    # Select the batch: stale pledges, least-recently-touched first. Registry
+    # order alone would let a few permanently failing rows at the top occupy
+    # every batch; ordering by last activity (check or attempt) rotates them
+    # to the back and lets the rest of the registry through.
     # ------------------------------------------------------------------
-    actionable: list[tuple[PledgeInput, dict]] = []
+    stale: list[tuple[PledgeInput, dict]] = []
     skipped_fresh = 0
-    stale_beyond_batch = 0
 
     for pledge in pledge_inputs:
         pledge_id = pledge.resolved_pledge_id()
@@ -209,10 +236,11 @@ def run_pledgetracker_live(
         if not force and _is_fresh(doc_data, freshness_days):
             skipped_fresh += 1
             continue
-        if len(actionable) < batch_size:
-            actionable.append((pledge, doc_data))
-        else:
-            stale_beyond_batch += 1
+        stale.append((pledge, doc_data))
+
+    stale.sort(key=lambda item: _last_activity(item[1]))
+    actionable = stale[:batch_size]
+    stale_beyond_batch = len(stale) - len(actionable)
 
     # ------------------------------------------------------------------
     # Phase A: resolve a job id per pledge — resume an interrupted job when
@@ -266,7 +294,13 @@ def run_pledgetracker_live(
 
         if job_id is None:
             print(f"WARNING: pledge {pledge_id}: {submit_error}", file=sys.stderr)
-            doc_ref.set({"pledgetracker_last_error": submit_error}, merge=True)
+            doc_ref.set(
+                {
+                    "pledgetracker_last_error": submit_error,
+                    "pledgetracker_last_attempted_at": _now_iso(),
+                },
+                merge=True,
+            )
             failed += 1
             continue
 
@@ -295,7 +329,17 @@ def run_pledgetracker_live(
                 f"WARNING: pledge {pledge_id} (job {job_id}) failed: {exc}",
                 file=sys.stderr,
             )
-            doc_ref.set({"pledgetracker_last_error": str(exc)}, merge=True)
+            # The attempt stamp feeds _last_activity, so this pledge yields its
+            # batch slot to the rest of the registry until everything else had
+            # a turn. The job id is kept: a transient failure (embedding
+            # outage) can still resume the stored server-side result for free.
+            doc_ref.set(
+                {
+                    "pledgetracker_last_error": str(exc),
+                    "pledgetracker_last_attempted_at": _now_iso(),
+                },
+                merge=True,
+            )
             failed += 1
             continue
 

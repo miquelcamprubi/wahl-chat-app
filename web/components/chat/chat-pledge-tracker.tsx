@@ -12,6 +12,7 @@ import { PLEDGE_TRACKER_BRAND } from '@/lib/pledge-tracker/brand';
 import {
   formatPledgeDate,
   getVisiblePledges,
+  safeExternalUrl,
   sortedRelevantEvents,
 } from '@/lib/pledge-tracker/pledges';
 import type {
@@ -127,6 +128,8 @@ function ChatPledgeTracker({ message, open, onOpenChange }: Props) {
 function PledgeSummaryCard({ pledge }: { pledge: PledgeRecord }) {
   const pledgeDate = formatPledgeDate(pledge.pledge_date);
   const sourceTitle = pledge.pledge_source_title ?? pledge.pledge_source_url;
+  // href-safe (http/https only); an unsafe URL degrades to plain text.
+  const sourceUrl = safeExternalUrl(pledge.pledge_source_url);
   const statusLabel = pledge.tracker_status_label;
 
   return (
@@ -147,11 +150,11 @@ function PledgeSummaryCard({ pledge }: { pledge: PledgeRecord }) {
                 </span>
               )}
               {sourceTitle &&
-                (pledge.pledge_source_url ? (
+                (sourceUrl ? (
                   <a
-                    href={pledge.pledge_source_url}
+                    href={sourceUrl}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="inline-flex min-w-0 items-center gap-1 underline underline-offset-2 hover:text-foreground"
                   >
                     <span className="truncate">{sourceTitle}</span>
@@ -241,6 +244,8 @@ function TimelineEvent({
 }) {
   const [showFullText, setShowFullText] = useState(false);
   const date = formatPledgeDate(event.date);
+  // href-safe (http/https only); an unsafe URL hides the Quelle link.
+  const eventUrl = safeExternalUrl(event.url);
   const shortTitle = event.event_short?.trim();
   const hasShortTitle = Boolean(shortTitle) && shortTitle !== event.event;
 
@@ -300,11 +305,11 @@ function TimelineEvent({
             {showFullText ? 'Weniger' : 'Mehr'}
           </button>
         )}
-        {event.url && (
+        {eventUrl && (
           <a
-            href={event.url}
+            href={eventUrl}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-1 underline-offset-2 hover:text-foreground hover:underline"
           >
             Quelle

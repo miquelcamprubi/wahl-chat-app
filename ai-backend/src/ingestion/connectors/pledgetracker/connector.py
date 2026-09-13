@@ -138,7 +138,7 @@ class PledgeTrackerConnector(BaseConnector):
             policy_area=pledge.policy_area,
             pledge_date=pledge.pledge_date,
             pledge_source_title=pledge.pledge_source_title,
-            pledge_source_url=pledge.pledge_source_url,
+            pledge_source_url=_safe_http_url(pledge.pledge_source_url),
             pledge_source_locator=pledge.pledge_source_locator,
             timeline_events=[_normalize_event(event) for event in raw_events],
             last_checked_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -154,7 +154,9 @@ class PledgeTrackerConnector(BaseConnector):
         party_id = raw.get("party_id") or raw.get("party") or "unknown"
         claim = raw.get("claim") or raw.get("claim_text") or raw.get("label")
         claim = claim or raw.get("claim_id") or "Unbekanntes Versprechen"
-        normalized_summary = raw.get("normalized_summary") or raw.get("summary") or claim
+        normalized_summary = (
+            raw.get("normalized_summary") or raw.get("summary") or claim
+        )
 
         region_path = raw.get("region_path") or ["DE"]
         region = raw.get("region") or region_path[-1]
@@ -182,7 +184,7 @@ class PledgeTrackerConnector(BaseConnector):
             policy_area=raw.get("policy_area"),
             pledge_date=raw.get("pledge_date"),
             pledge_source_title=raw.get("pledge_source_title"),
-            pledge_source_url=raw.get("pledge_source_url"),
+            pledge_source_url=_safe_http_url(raw.get("pledge_source_url")),
             pledge_source_locator=raw.get("pledge_source_locator"),
             timeline_events=events,
             last_checked_at=last_checked_at,
@@ -272,7 +274,7 @@ def _normalize_event(raw: dict) -> PledgeTimelineEvent:
         or raw.get("event date (publication date if different)"),
         event=raw.get("event") or raw.get("description") or "",
         event_short=raw.get("event_short"),
-        url=raw.get("url"),
+        url=_safe_http_url(raw.get("url")),
         title=raw.get("title"),
         bundesland=raw.get("bundesland"),
         source=raw.get("quelle") or raw.get("source"),
@@ -282,6 +284,20 @@ def _normalize_event(raw: dict) -> PledgeTimelineEvent:
         raw_label=raw_label,
         confidence=confidence,
     )
+
+
+def _safe_http_url(value: object) -> Optional[str]:
+    """Return the URL only when it is http(s), else None.
+
+    Event and source URLs reach <a href> in the UI verbatim, so javascript:,
+    data: and other schemes must never enter Firestore in a URL field.
+    """
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if candidate.lower().startswith(("http://", "https://")):
+        return candidate
+    return None
 
 
 def _label_to_bool(label: object) -> Optional[bool]:

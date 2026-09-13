@@ -44,6 +44,25 @@ export function getVisiblePledges(
 }
 
 /**
+ * Allow only http(s) URLs into href attributes. Event and source URLs arrive
+ * from an external pipeline, so anything else (javascript:, data:, relative
+ * strings, …) is rejected and the caller falls back to plain text.
+ */
+export function safeExternalUrl(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      ? value
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Format a PledgeTracker date for display. Source values are not always clean
  * ISO dates (e.g. "2026-06-18_19-48-08", "2023-06-01 (2025-08-13)"), so take
  * the leading date part and fall back to the raw string when it will not

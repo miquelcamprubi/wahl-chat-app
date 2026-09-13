@@ -19,11 +19,16 @@ Tests defined here:
     out of the embedded text, and one pledge = one chunk.
   - test_to_chunk_content_hash_tracks_refreshes: a refreshed check date changes
     content_hash so re-ingestion rewrites the point.
+  - test_urls_are_restricted_to_http_s: javascript:/data: URLs from the pipeline
+    are dropped at normalize time so they can never reach an <a href>.
 """
 
 from __future__ import annotations
 
-from src.ingestion.connectors.pledgetracker.connector import PledgeTrackerConnector
+from src.ingestion.connectors.pledgetracker.connector import (
+    PledgeTrackerConnector,
+    _normalize_event,
+)
 from src.ingestion.connectors.pledgetracker.registry import PledgeInput
 from src.ingestion.schemas import ChunkRecord, SourceType
 
@@ -128,9 +133,7 @@ def test_merge_result_without_events_raises() -> None:
 def test_merge_result_with_empty_events_is_valid() -> None:
     """Empty events = 'no evidence yet' — still a record (freshness applies)."""
     connector = PledgeTrackerConnector(stub=True)
-    record = connector.merge_result(
-        _cdu_input(), {"status": "success", "events": []}
-    )
+    record = connector.merge_result(_cdu_input(), {"status": "success", "events": []})
     assert record.timeline_events == []
 
 
@@ -162,6 +165,19 @@ def test_to_chunk_content_hash_tracks_refreshes() -> None:
     connector = PledgeTrackerConnector(stub=True)
     record = connector.merge_result(_cdu_input(), _README_RESULT)
     first = connector.to_chunk(record)
-    refreshed = record.model_copy(update={"last_checked_at": "2030-01-01T00:00:00+00:00"})
+    refreshed = record.model_copy(
+        update={"last_checked_at": "2030-01-01T00:00:00+00:00"}
+    )
     second = connector.to_chunk(refreshed)
     assert first.content_hash != second.content_hash
+
+
+def test_urls_are_restricted_to_http_s() -> None:
+    """Non-http(s) URLs never reach Firestore URL fields (href safety)."""
+    assert _normalize_event({"event": "x", "url": "javascript:alert(1)"}).url is None
+    assert _normalize_event({"event": "x", "url": "data:text/html,x"}).url is None
+    assert _normalize_event({"event": "x", "url": 42}).url is None
+    assert (
+        _normalize_event({"event": "x", "url": " https://ok.de/a "}).url
+        == "https://ok.de/a"
+    )

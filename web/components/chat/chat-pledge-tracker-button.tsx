@@ -5,7 +5,7 @@ import { getVisiblePledges } from '@/lib/pledge-tracker/pledges';
 import type { StreamingMessage } from '@/lib/socket.types';
 import type { MessageItem } from '@/lib/stores/chat-store.types';
 import { track } from '@vercel/analytics/react';
-import { SquareCheckBig } from 'lucide-react';
+import { ChevronRight, SquareCheckBig } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 type Props = {
@@ -78,19 +78,30 @@ function ChatPledgeTrackerButton({
         aria-haspopup="dialog"
         aria-expanded={revealed}
         onClick={handleClick}
-        className="w-full rounded-xl border border-border/60 bg-muted/30 p-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="group w-full rounded-xl border border-border/60 bg-muted/30 p-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <span className="flex items-start gap-3">
           {/* PledgeTracker mark instead of the party tile: the party logo
               already sits next to the answer, so a second one reads doubled. */}
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 ring-1 ring-emerald-500/30">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md ring-1 ring-emerald-500/30">
             <SquareCheckBig
               aria-hidden
               className="size-5 text-emerald-600 dark:text-emerald-400"
             />
           </span>
-          <span className="line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">
-            {claim ?? 'PledgeTracker'}
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              PledgeTracker
+            </span>
+            <span className="line-clamp-2 text-[15px] font-semibold leading-snug text-foreground">
+              {claim ?? 'Passende Ziele der Partei'}
+            </span>
+          </span>
+          {/* CTA affordance: looks like a button, but the whole card is the
+              real <button> — a nested interactive element would be invalid. */}
+          <span className="inline-flex shrink-0 items-center gap-1 self-center rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground shadow-sm group-hover:bg-accent sm:px-2.5">
+            <span className="hidden sm:inline">Ansehen</span>
+            <ChevronRight aria-hidden className="size-3.5" />
           </span>
         </span>
       </button>
@@ -107,10 +118,6 @@ function ChatPledgeTrackerButton({
                 '0px 0px 80px 40px rgb(110 231 183 / 55%), 0 0 120px 70px rgb(0 0 0 / 50%), 0 0 160px 100px rgb(0 0 0 / 50%)',
             }}
           />
-          <span className="absolute right-[-2px] top-[-2px] flex size-[10px]">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-75" />
-            <span className="relative inline-flex size-[10px] rounded-full bg-red-500" />
-          </span>
         </>
       )}
     </div>

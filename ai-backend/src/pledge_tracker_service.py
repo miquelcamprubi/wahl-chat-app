@@ -23,7 +23,7 @@ from typing import Any, Awaitable, Callable, Optional, cast
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from src.firebase_service import aget_context_by_id, aget_pledges_by_ids
+from src.firebase_service import aget_pledges_by_ids
 from src.ingestion.retrieve import retrieve
 from src.models.pledge_tracker import PledgeTrackerSuggestions
 from src.models.structured_outputs import PledgeRelevanceOutput
@@ -120,13 +120,18 @@ async def aretrieve_pledge_tracker_suggestions(
     *,
     query: str,
     party_id: str,
-    context_id: str,
+    region_path: Optional[list[str]] = None,
     query_vector: Optional[list[float]] = None,
     limit: int = 3,
 ) -> Optional[PledgeTrackerSuggestions]:
-    """Retrieve gated pledge suggestions for one party answer, or None."""
-    context = await aget_context_by_id(context_id)
-    region_path = context.region_path if context and context.region_path else ["DE"]
+    """Retrieve gated pledge suggestions for one party answer, or None.
+
+    ``region_path`` comes from the caller: generate_chat_stream fetches the
+    context exactly once per stream and every retrieve() reuses it, so the
+    pledge filter is guaranteed to use the same region scope as the rest of
+    the retrieval (and saves a Firestore read per party per answer).
+    """
+    region_path = region_path or ["DE"]
 
     payloads = cast(
         list[dict],

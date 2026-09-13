@@ -7,8 +7,8 @@ PledgeTracker suggestion-service unit tests (Qdrant/Firestore/LLM all faked).
 
 Tests defined here:
   - test_retrieve_applies_qdrant_filters: the Qdrant call carries the hard
-    filters (source_type=pledge_record, tenant party_id, context region_path)
-    and the precomputed query vector.
+    filters (source_type=pledge_record, tenant party_id, the caller-provided
+    region_path) and the precomputed query vector.
   - test_gate_keeps_only_relevant_candidates: only judged-relevant pledge ids
     are hydrated, retrieval order preserved; the gate prompt carries the query
     and every candidate description.
@@ -19,13 +19,11 @@ Tests defined here:
     pre-gate behavior (all candidates kept) instead of hiding data.
   - test_gate_invalid_indices_keep_all_candidates: out-of-range output is
     treated like a failure.
-  - test_context_without_region_path_defaults_to_de: contexts lacking
-    region_path fall back to ["DE"].
+  - test_missing_region_path_defaults_to_de: callers without a region_path
+    (older contexts) fall back to ["DE"].
 """
 
 from __future__ import annotations
-
-from types import SimpleNamespace
 
 import pytest
 
@@ -68,17 +66,9 @@ def _record(pledge_id: str) -> PledgeRecord:
     )
 
 
-def _wire(
-    monkeypatch: pytest.MonkeyPatch,
-    payloads: list[dict],
-    *,
-    region_path: list[str] | None = None,
-) -> dict:
-    """Fake context/retrieve/hydration; record retrieve kwargs + hydrated ids."""
+def _wire(monkeypatch: pytest.MonkeyPatch, payloads: list[dict]) -> dict:
+    """Fake retrieve/hydration; record retrieve kwargs + hydrated ids."""
     calls: dict = {"hydrated": None, "retrieve_kwargs": None}
-
-    async def fake_context(context_id: str):
-        return SimpleNamespace(region_path=region_path)
 
     def fake_retrieve(query: str, **kwargs):
         calls["retrieve_kwargs"] = {"query": query, **kwargs}
@@ -88,7 +78,6 @@ def _wire(
         calls["hydrated"] = pledge_ids
         return [_record(pid) for pid in pledge_ids]
 
-    monkeypatch.setattr(service, "aget_context_by_id", fake_context)
     monkeypatch.setattr(service, "retrieve", fake_retrieve)
     monkeypatch.setattr(service, "aget_pledges_by_ids", fake_pledges)
     return calls
@@ -103,13 +92,13 @@ _THREE_PAYLOADS = [
 
 async def test_retrieve_applies_qdrant_filters(monkeypatch) -> None:
     """The Qdrant call carries the hard filters and the precomputed vector."""
-    calls = _wire(monkeypatch, [_THREE_PAYLOADS[0]], region_path=["DE", "DE-ST"])
+    calls = _wire(monkeypatch, [_THREE_PAYLOADS[0]])
     _patch_gate(monkeypatch, _FakeGate(indices=[1]))
 
     result = await service.aretrieve_pledge_tracker_suggestions(
         query="A14 Ausbau",
         party_id="cdu",
-        context_id="landtagswahl-sachsen-anhalt-2026",
+        region_path=["DE", "DE-ST"],
         query_vector=[0.1, 0.2],
     )
 
@@ -127,14 +116,14 @@ async def test_retrieve_applies_qdrant_filters(monkeypatch) -> None:
 
 async def test_gate_keeps_only_relevant_candidates(monkeypatch) -> None:
     """Only judged-relevant ids hydrate, in retrieval order."""
-    calls = _wire(monkeypatch, list(_THREE_PAYLOADS), region_path=["DE", "DE-ST"])
+    calls = _wire(monkeypatch, list(_THREE_PAYLOADS))
     gate = _FakeGate(indices=[1, 3])
     _patch_gate(monkeypatch, gate)
 
     result = await service.aretrieve_pledge_tracker_suggestions(
         query="A14 Ausbau",
         party_id="cdu",
-        context_id="landtagswahl-sachsen-anhalt-2026",
+        region_path=["DE", "DE-ST"],
     )
 
     assert result is not None
@@ -145,13 +134,13 @@ async def test_gate_keeps_only_relevant_candidates(monkeypatch) -> None:
 
 async def test_gate_dropping_everything_returns_none(monkeypatch) -> None:
     """All candidates dropped → None; hydration is never called."""
-    calls = _wire(monkeypatch, list(_THREE_PAYLOADS), region_path=["DE", "DE-ST"])
+    calls = _wire(monkeypatch, list(_THREE_PAYLOADS))
     _patch_gate(monkeypatch, _FakeGate(indices=[]))
 
     result = await service.aretrieve_pledge_tracker_suggestions(
         query="Außenpolitik",
         party_id="cdu",
-        context_id="landtagswahl-sachsen-anhalt-2026",
+        region_path=["DE", "DE-ST"],
     )
 
     assert result is None
@@ -160,13 +149,13 @@ async def test_gate_dropping_everything_returns_none(monkeypatch) -> None:
 
 async def test_gate_error_keeps_all_candidates(monkeypatch) -> None:
     """An LLM failure degrades to pre-gate behavior (all candidates kept)."""
-    calls = _wire(monkeypatch, list(_THREE_PAYLOADS), region_path=["DE", "DE-ST"])
+    calls = _wire(monkeypatch, list(_THREE_PAYLOADS))
     _patch_gate(monkeypatch, _FakeGate(error=True))
 
     result = await service.aretrieve_pledge_tracker_suggestions(
         query="A14 Ausbau",
         party_id="cdu",
-        context_id="landtagswahl-sachsen-anhalt-2026",
+        region_path=["DE", "DE-ST"],
     )
 
     assert result is not None
@@ -175,28 +164,28 @@ async def test_gate_error_keeps_all_candidates(monkeypatch) -> None:
 
 async def test_gate_invalid_indices_keep_all_candidates(monkeypatch) -> None:
     """Out-of-range gate output is treated like a failure (all kept)."""
-    calls = _wire(monkeypatch, list(_THREE_PAYLOADS), region_path=["DE", "DE-ST"])
+    calls = _wire(monkeypatch, list(_THREE_PAYLOADS))
     _patch_gate(monkeypatch, _FakeGate(indices=[0, 7]))
 
     result = await service.aretrieve_pledge_tracker_suggestions(
         query="A14 Ausbau",
         party_id="cdu",
-        context_id="landtagswahl-sachsen-anhalt-2026",
+        region_path=["DE", "DE-ST"],
     )
 
     assert result is not None
     assert calls["hydrated"] == ["p-verkehr", "p-wirtschaft", "p-polizei"]
 
 
-async def test_context_without_region_path_defaults_to_de(monkeypatch) -> None:
-    """Older contexts without region_path fall back to ["DE"]."""
-    calls = _wire(monkeypatch, [_THREE_PAYLOADS[0]], region_path=None)
+async def test_missing_region_path_defaults_to_de(monkeypatch) -> None:
+    """Callers without a region_path (older contexts) fall back to ["DE"]."""
+    calls = _wire(monkeypatch, [_THREE_PAYLOADS[0]])
     _patch_gate(monkeypatch, _FakeGate(indices=[1]))
 
     await service.aretrieve_pledge_tracker_suggestions(
         query="Mindestlohn",
         party_id="spd",
-        context_id="bundestagswahl-2025",
+        region_path=None,
     )
 
     assert calls["retrieve_kwargs"]["region_path"] == ["DE"]

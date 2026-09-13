@@ -442,9 +442,16 @@ async def _safe_pledge_tracker_payload(
     party: ContextParty,
     context_id: str,
     query: str,
+    region_path: Optional[List[str]] = None,
     query_vector: Optional[list[float]] = None,
 ):
-    """Best-effort PledgeTracker lookup; failures must never break chat answers."""
+    """Best-effort PledgeTracker lookup; failures must never break chat answers.
+
+    ``region_path`` is the stream-level value fetched once in
+    generate_chat_stream — passed through so the pledge filter shares the
+    region scope of every other retrieve() call instead of re-deriving it.
+    ``context_id`` is only for logging.
+    """
     if party.party_id == WAHL_CHAT_PARTY.party_id:
         return None
 
@@ -452,7 +459,7 @@ async def _safe_pledge_tracker_payload(
         return await aretrieve_pledge_tracker_suggestions(
             query=query,
             party_id=party.party_id,
-            context_id=context_id,
+            region_path=region_path,
             query_vector=query_vector,
             limit=3,
         )
@@ -474,6 +481,7 @@ async def yield_cached_party_response(
     party: ContextParty,
     group_chat_session: GroupChatSession,
     cached_response: CachedResponse,
+    region_path: Optional[List[str]] = None,
 ) -> AsyncGenerator[str, None]:
     """Yield SSE events for a cached party response (simulated streaming).
 
@@ -522,6 +530,7 @@ async def yield_cached_party_response(
         party=party,
         context_id=group_chat_session.context_id,
         query=pledge_query,
+        region_path=region_path,
     )
 
     party_response_complete_dto = PartyResponseCompleteDto(
@@ -1227,7 +1236,7 @@ async def fetch_party_response_stream(
                 if cached_answer_to_emit is not None:
                     logger.info(f"Serving cached response for party {party.party_id}")
                     async for event in yield_cached_party_response(
-                        party, group_chat_session, cached_answer_to_emit
+                        party, group_chat_session, cached_answer_to_emit, region_path
                     ):
                         yield event
                     return
@@ -1373,6 +1382,7 @@ async def fetch_party_response_stream(
                     if improved_rag_query_list
                     else question_for_party
                 ),
+                region_path=region_path,
                 query_vector=rag_query_vector,
             )
 

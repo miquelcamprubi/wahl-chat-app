@@ -149,9 +149,16 @@ def run_pledgetracker_stub(
             record = connector.normalize_record(raw)
             chunk = connector.to_chunk(record)
 
-            _write_pledge_record(db, record)
+            # Qdrant BEFORE Firestore: the Firestore write carries
+            # last_checked_at, i.e. the freshness watermark. Dying between the
+            # writes in this order leaves a vector without a fresh doc — the
+            # next run simply redoes the pledge. The reverse order would mark
+            # it fresh WITHOUT a vector, hiding it from retrieval for a full
+            # freshness window. (A vector whose doc is missing is tolerated at
+            # read time: hydration skips it as a stale point.)
             vectors = _embed_texts(embed, [chunk.text])
             _upsert_chunks(qdrant, collection_name, [chunk], vectors)
+            _write_pledge_record(db, record)
         except Exception as exc:  # noqa: BLE001
             print(f"WARNING: skipping pledge {pledge_id}: {exc}", file=sys.stderr)
             continue
@@ -238,9 +245,9 @@ def run_pledgetracker_live(
         db.collection("pledges").document(pledge_id).set(
             {
                 "pledgetracker_job_id": new_job_id,
-                "pledgetracker_job_submitted_at": datetime.now(
-                    timezone.utc
-                ).isoformat(timespec="seconds"),
+                "pledgetracker_job_submitted_at": datetime.now(timezone.utc).isoformat(
+                    timespec="seconds"
+                ),
             },
             merge=True,
         )
@@ -270,12 +277,19 @@ def run_pledgetracker_live(
             # event_short=None and the frontend falls back to full text.
             add_short_titles(record)
 
-            _write_pledge_record(db, record)
-            doc_ref.set({"pledgetracker_last_error": None}, merge=True)
-
+            # Qdrant BEFORE Firestore: _write_pledge_record persists
+            # last_checked_at (the freshness watermark). Dying between the
+            # writes in this order leaves a vector without a fresh doc, and the
+            # resume path redoes the pledge next run. The reverse order marked
+            # the pledge fresh WITHOUT a vector — invisible to retrieval for a
+            # full freshness window, unrecoverable by resume. (A vector whose
+            # doc is stale is tolerated at read time by aget_pledges_by_ids.)
             chunk = connector.to_chunk(record)
             vectors = _embed_texts(embed, [chunk.text])
             _upsert_chunks(qdrant, collection_name, [chunk], vectors)
+
+            _write_pledge_record(db, record)
+            doc_ref.set({"pledgetracker_last_error": None}, merge=True)
         except Exception as exc:  # noqa: BLE001
             print(
                 f"WARNING: pledge {pledge_id} (job {job_id}) failed: {exc}",

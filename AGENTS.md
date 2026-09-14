@@ -296,6 +296,46 @@ UI copy says "Ziele", not "Versprechen"; the events' full source text is never
 stored (`url`/`title` suffice); the chat-side lookup is best-effort and may
 return nothing (the UI then shows no PledgeTracker entry point).
 
+#### The PledgeTracker study (consent, cohorts, questionnaire)
+
+An in-app experiment with the Vlachos group (University of Cambridge): does
+PledgeTracker change users' willingness to engage in political debate?
+
+- **Scope**: only `abgeordnetenhauswahl-berlin-2026` and
+  `landtagswahl-mecklenburg-vorpommern-2026` — `STUDY_CONTEXT_IDS` in
+  `web/lib/pledge-study/study-config.ts`, which also holds the prompt-timing
+  constants, the cohort hash, and the Typeform URL builder.
+- **Kill switch**: Firestore doc `system_status/pledge_study` `{enabled: true}`.
+  Missing doc/field/error = off (the safe default); flipping it is a console
+  edit, no deploy (locally: create the doc in the emulator UI). The
+  questionnaire prompt additionally needs `NEXT_PUBLIC_STUDY_TYPEFORM_URL`.
+- **Flow**: fresh chat in a study context → two-stage consent (short ask, then
+  the Einverständniserklärung). A „Nein" is permanent per uid. A „Ja" assigns
+  the cohort — deterministic hash(uid+salt), p=0.5 — and persists
+  `study_participants/{uid}` (the analysis source of truth). NEVER change the
+  salt while the study runs.
+- **Gate** (`web/lib/pledge-study/gate.ts`): in a study context with the study
+  on, ONLY consented experimental participants see PledgeTracker. Control and
+  non-consented users see nothing — pre-exposure would contaminate a later
+  control assignment. Outside the study contexts the product is unchanged.
+- **Telemetry** (consent-gated, `recordStudyEvent`): append-only `events` on
+  the participant doc — `first_message`, `first_answer_completed`,
+  `pledge_shown` (viewport exposure), `pledge_modal_open`/`_close`,
+  `prompt_shown`/`prompt_dismissed` (with trigger), `questionnaire_clicked`.
+  Counts and firsts are derived from the log at analysis time.
+- **Questionnaire prompts** (identical for both cohorts — control symmetry):
+  a timer 15s after the FIRST completed answer (fires only while idle), an
+  immediate prompt on pledge-modal close, and a 90s longstop inside a modal;
+  max 2 prompts ever, cap survives reloads. The Typeform link carries
+  uid/trigger/ctx as hidden fields — never the cohort (no self-unblinding).
+- **Analysis joins**: `study_participants/{uid}` ↔ `chat_sessions.user_id`
+  (sessions are also stamped `study_group` + `is_pledge_study`) ↔ the Typeform
+  hidden `uid`.
+- Known simplifications: the idle predicate tracks streaming and the pledge
+  modal (not every uncontrolled dialog); the kill switch is client-read only
+  (default-off hides everything until the snapshot arrives); a second device
+  is a new participant (anonymous auth — accepted trade-off).
+
 De-dup with AW is two-way and party+region+date scoped: an upload is skipped if AW
 already has that party's programme; once AW ingests it, its `post_upsert` deletes
 the uploaded twin.

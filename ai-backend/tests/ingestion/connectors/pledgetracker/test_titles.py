@@ -12,9 +12,13 @@ Tests defined here:
   - test_llm_error_is_soft: an LLM exception never propagates; 0 titles added.
   - test_only_missing_events_are_sent: events that already carry a headline are
     untouched and excluded from the prompt (backfill semantics).
+  - test_calls_share_one_event_loop: consecutive pledges run on one live loop,
+    so loop-bound LLM client connections survive across a bulk run.
 """
 
 from __future__ import annotations
+
+import asyncio
 
 from src.ingestion.connectors.pledgetracker.connector import PledgeTrackerConnector
 from src.ingestion.connectors.pledgetracker.registry import PledgeInput
@@ -111,3 +115,26 @@ def test_only_missing_events_are_sent() -> None:
     assert record.timeline_events[1].event_short == "Neue Schlagzeile"
     assert "A143" in fake.prompts[0]
     assert "DEGES" not in fake.prompts[0]
+
+
+def test_calls_share_one_event_loop() -> None:
+    """Consecutive pledges reuse one live loop.
+
+    The shared LLM clients cache connections bound to the loop they first ran
+    on; a fresh (closed) loop per pledge burned one failover model per pledge
+    with "Event loop is closed".
+    """
+    loops: list[asyncio.AbstractEventLoop] = []
+
+    class _LoopRecorder(_FakeStructuredOutput):
+        async def __call__(self, messages) -> PledgeEventHeadlines:  # noqa: ANN001
+            loops.append(asyncio.get_running_loop())
+            return await super().__call__(messages)
+
+    fake = _LoopRecorder(headlines=["Eins", "Zwei"])
+    add_short_titles(_record(), _structured_output_fn=fake)
+    add_short_titles(_record(), _structured_output_fn=fake)
+
+    assert len(loops) == 2
+    assert loops[0] is loops[1]
+    assert not loops[0].is_closed()

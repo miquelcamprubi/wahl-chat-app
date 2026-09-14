@@ -49,6 +49,19 @@ Ereignisse:
 # never touches LLM configuration.
 _StructuredOutputFn = Callable[[list[BaseMessage]], Coroutine[Any, Any, Any]]
 
+# One process-wide loop for every title call. The shared LLM clients cache
+# connections bound to the loop they first ran on, so a per-pledge
+# asyncio.run() (which closes its loop on return) would kill one failover
+# model per pledge ("Event loop is closed") until the roster is exhausted.
+_runner: Optional[asyncio.Runner] = None
+
+
+def _get_runner() -> asyncio.Runner:
+    global _runner
+    if _runner is None:
+        _runner = asyncio.Runner()
+    return _runner
+
 
 async def _default_structured_output(messages: list[BaseMessage]) -> Any:
     from src.llms import (  # noqa: PLC0415
@@ -84,7 +97,7 @@ def add_short_titles(
     fn = _structured_output_fn or _default_structured_output
 
     try:
-        result: Any = asyncio.run(fn([HumanMessage(content=prompt)]))
+        result: Any = _get_runner().run(fn([HumanMessage(content=prompt)]))
         headlines = list(result.headlines)
     except Exception as exc:  # noqa: BLE001
         logger.warning(

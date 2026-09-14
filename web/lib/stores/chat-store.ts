@@ -21,6 +21,7 @@ import { initializeChatSession } from './actions/initialize-chat-session';
 import { loadChatSession } from './actions/load-chat-session';
 import { mergeStreamingChunkPayloadForMessage } from './actions/merge-streaming-chunk-payload-for-message';
 import { newChat } from './actions/new-chat';
+import { recordStudyEvent } from './actions/record-study-event';
 import { selectRespondingParties } from './actions/select-responding-parties';
 import { setChatSessionId } from './actions/set-chat-session-id';
 import { setChatSessionIsPublic } from './actions/set-chat-session-is-public';
@@ -133,6 +134,7 @@ export function createChatStore(initialState?: Partial<ChatStore>) {
         hydrateStudyParticipant: hydrateStudyParticipant(get, set),
         acceptStudyConsent: acceptStudyConsent(get, set),
         declineStudyConsent: declineStudyConsent(get, set),
+        recordStudyEvent: recordStudyEvent(get, set),
       })),
     ),
   );

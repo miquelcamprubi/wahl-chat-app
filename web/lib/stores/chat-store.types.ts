@@ -1,4 +1,8 @@
-import type { ChatSession, Tenant } from '@/lib/firebase/firebase.types';
+import type {
+  ChatSession,
+  StudyParticipant,
+  Tenant,
+} from '@/lib/firebase/firebase.types';
 import type { PartyDetails } from '@/lib/party-details';
 import type {
   StudyCohort,
@@ -282,6 +286,10 @@ export type ChatStoreActions = {
   hydrateStudyParticipant: (userId: string) => Promise<void>;
   acceptStudyConsent: (userId: string, contextId: string) => Promise<void>;
   declineStudyConsent: (userId: string) => Promise<void>;
+  recordStudyEvent: (
+    type: string,
+    options?: { trigger?: string; merge?: Partial<StudyParticipant> },
+  ) => Promise<void>;
 };
 
 export type ChatStore = ChatStoreState & ChatStoreActions;

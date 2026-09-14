@@ -7,6 +7,9 @@ import type { Timestamp } from 'firebase/firestore';
 export type ChatSession = {
   id: string;
   user_id: string;
+  /** PledgeTracker study: cohort stamp for joining chat data to the study. */
+  study_group?: 'control' | 'experimental';
+  is_pledge_study?: boolean;
   party_id?: string;
   is_public?: boolean;
   title?: string;

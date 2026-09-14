@@ -84,6 +84,7 @@ export async function createChatSession(
   tenantId?: string,
   contextId?: string,
   prolificMetadata?: ProlificMetadata,
+  studyGroup?: 'control' | 'experimental',
 ): Promise<void> {
   await setDoc(doc(db, 'chat_sessions', sessionId), {
     user_id: userId,
@@ -95,6 +96,9 @@ export async function createChatSession(
     ...(prolificMetadata
       ? { prolific_metadata: prolificMetadata, is_prolific_study: true }
       : {}),
+    // PledgeTracker study: cohort stamp so chat data joins to the study
+    // without an extra lookup (mirrors the prolific metadata pattern).
+    ...(studyGroup ? { study_group: studyGroup, is_pledge_study: true } : {}),
   });
 }
 

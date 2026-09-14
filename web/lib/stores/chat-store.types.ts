@@ -1,5 +1,9 @@
 import type { ChatSession, Tenant } from '@/lib/firebase/firebase.types';
 import type { PartyDetails } from '@/lib/party-details';
+import type {
+  StudyCohort,
+  StudyConsentAnswer,
+} from '@/lib/pledge-study/study-config';
 import type { ProlificMetadata } from '@/lib/prolific-study/prolific-metadata';
 import type {
   PartyResponseChunkReadyPayload,
@@ -158,6 +162,21 @@ export type ChatStoreState = {
   prolificMinInteractions?: number;
   prolificDisclaimerDismissed?: boolean;
   prolificMessageCount: number;
+  // --- PledgeTracker study (consent, cohort, questionnaire) ---
+  /** Kill-switch snapshot (system_status/pledge_study); undefined = unknown. */
+  studyEnabled?: boolean;
+  /** undefined = not answered yet (the consent dialog may show). */
+  studyConsent?: StudyConsentAnswer;
+  studyCohort?: StudyCohort;
+  /** study_participants/{uid} has been read for the current uid. */
+  studyHydrated?: boolean;
+  /** Questionnaire prompts shown so far (mirror of the persisted event log). */
+  studyPromptCount: number;
+  studyQuestionnaireClicked?: boolean;
+  /** The PledgeTracker popup is open (drives questionnaire trigger timing). */
+  pledgeModalOpen: boolean;
+  /** Epoch ms when the FIRST answer of this session finished streaming. */
+  firstAnswerCompletedAt?: number;
 };
 
 export type ChatStoreActions = {
@@ -258,6 +277,11 @@ export type ChatStoreActions = {
   setProlificDisclaimerDismissed: (dismissed: boolean) => void;
   incrementProlificMessageCount: () => void;
   setProlificMessageCount: (count: number) => void;
+  setStudyEnabled: (enabled: boolean) => void;
+  setPledgeModalOpen: (open: boolean) => void;
+  hydrateStudyParticipant: (userId: string) => Promise<void>;
+  acceptStudyConsent: (userId: string, contextId: string) => Promise<void>;
+  declineStudyConsent: (userId: string) => Promise<void>;
 };
 
 export type ChatStore = ChatStoreState & ChatStoreActions;

@@ -7,6 +7,7 @@ import { isStudyContext } from '@/lib/pledge-study/study-config';
 import { isProlificStudy } from '@/lib/prolific-study/prolific-metadata';
 import { useEffect, useState } from 'react';
 import ChatStudyConsent from './chat-study-consent';
+import ChatStudyQuestionnairePrompt from './chat-study-questionnaire-prompt';
 
 /**
  * Self-gating mount point for the PledgeTracker study (Vlachos group):
@@ -62,7 +63,12 @@ function ChatStudyWrapper() {
     return null;
   }
 
-  return <ChatStudyConsent userId={user.uid} contextId={contextId} />;
+  return (
+    <>
+      <ChatStudyConsent userId={user.uid} contextId={contextId} />
+      <ChatStudyQuestionnairePrompt userId={user.uid} contextId={contextId} />
+    </>
+  );
 }
 
 export default ChatStudyWrapper;

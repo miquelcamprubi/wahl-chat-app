@@ -131,6 +131,12 @@ export function createChatStore(initialState?: Partial<ChatStore>) {
           set({ prolificMessageCount }),
         setStudyEnabled: (studyEnabled) => set({ studyEnabled }),
         setPledgeModalOpen: (pledgeModalOpen) => set({ pledgeModalOpen }),
+        incrementStudyPromptCount: () =>
+          set((state) => {
+            state.studyPromptCount = state.studyPromptCount + 1;
+          }),
+        setStudyQuestionnaireClicked: (studyQuestionnaireClicked) =>
+          set({ studyQuestionnaireClicked }),
         hydrateStudyParticipant: hydrateStudyParticipant(get, set),
         acceptStudyConsent: acceptStudyConsent(get, set),
         declineStudyConsent: declineStudyConsent(get, set),

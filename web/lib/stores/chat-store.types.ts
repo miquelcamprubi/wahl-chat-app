@@ -290,6 +290,8 @@ export type ChatStoreActions = {
     type: string,
     options?: { trigger?: string; merge?: Partial<StudyParticipant> },
   ) => Promise<void>;
+  incrementStudyPromptCount: () => void;
+  setStudyQuestionnaireClicked: (clicked: boolean) => void;
 };
 
 export type ChatStore = ChatStoreState & ChatStoreActions;

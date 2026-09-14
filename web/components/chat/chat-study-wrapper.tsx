@@ -66,7 +66,7 @@ function ChatStudyWrapper() {
   return (
     <>
       <ChatStudyConsent userId={user.uid} contextId={contextId} />
-      <ChatStudyQuestionnairePrompt userId={user.uid} contextId={contextId} />
+      <ChatStudyQuestionnairePrompt userId={user.uid} />
     </>
   );
 }

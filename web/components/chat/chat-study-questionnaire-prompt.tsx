@@ -22,7 +22,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Props = {
   userId: string;
-  contextId: string;
 };
 
 /**
@@ -45,7 +44,7 @@ type Props = {
  * from the participant's own use of the feature — part of the treatment —
  * never from group-dependent scheduling rules.
  */
-function ChatStudyQuestionnairePrompt({ userId, contextId }: Props) {
+function ChatStudyQuestionnairePrompt({ userId }: Props) {
   const studyConsent = useChatStore((state) => state.studyConsent);
   const firstAnswerCompletedAt = useChatStore(
     (state) => state.firstAnswerCompletedAt,
@@ -70,7 +69,9 @@ function ChatStudyQuestionnairePrompt({ userId, contextId }: Props) {
   const prevModalOpenRef = useRef(false);
 
   // NEXT_PUBLIC_ vars are inlined at build time; unset = prompt disabled.
-  const urlConfigured = Boolean(process.env.NEXT_PUBLIC_STUDY_TYPEFORM_URL);
+  const urlConfigured = Boolean(
+    process.env.NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL,
+  );
 
   const eligible =
     studyConsent === 'accepted' &&
@@ -147,7 +148,7 @@ function ChatStudyQuestionnairePrompt({ userId, contextId }: Props) {
     if (!activePrompt) {
       return;
     }
-    const url = questionnaireUrl(userId, activePrompt.trigger, contextId);
+    const url = questionnaireUrl(userId);
     if (url) {
       window.open(url, '_blank', 'noopener');
     }

@@ -308,7 +308,8 @@ PledgeTracker change users' willingness to engage in political debate?
 - **Kill switch**: Firestore doc `system_status/pledge_study` `{enabled: true}`.
   Missing doc/field/error = off (the safe default); flipping it is a console
   edit, no deploy (locally: create the doc in the emulator UI). The
-  questionnaire prompt additionally needs `NEXT_PUBLIC_STUDY_TYPEFORM_URL`.
+  questionnaire prompt additionally needs `NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL`
+  (the Google-Forms prefill link with a `<USER_ID>` placeholder).
 - **Flow**: fresh chat in a study context → two-stage consent (short ask, then
   the Einverständniserklärung). A „Nein" is permanent per uid. A „Ja" assigns
   the cohort — deterministic hash(uid+salt), p=0.5 — and persists
@@ -326,11 +327,12 @@ PledgeTracker change users' willingness to engage in political debate?
 - **Questionnaire prompts** (identical for both cohorts — control symmetry):
   a timer 15s after the FIRST completed answer (fires only while idle), an
   immediate prompt on pledge-modal close, and a 90s longstop inside a modal;
-  max 2 prompts ever, cap survives reloads. The Typeform link carries
-  uid/trigger/ctx as hidden fields — never the cohort (no self-unblinding).
+  max 2 prompts ever, cap survives reloads. Only the uid enters the
+  questionnaire URL (Google-Forms prefill parameter); trigger/context stay in
+  the event log, and the cohort is never in the URL (no self-unblinding).
 - **Analysis joins**: `study_participants/{uid}` ↔ `chat_sessions.user_id`
-  (sessions are also stamped `study_group` + `is_pledge_study`) ↔ the Typeform
-  hidden `uid`.
+  (sessions are also stamped `study_group` + `is_pledge_study`) ↔ the
+  questionnaire's prefilled `uid` field.
 - Known simplifications: the idle predicate tracks streaming and the pledge
   modal (not every uncontrolled dialog); the kill switch is client-read only
   (default-off hides everything until the snapshot arrives); a second device

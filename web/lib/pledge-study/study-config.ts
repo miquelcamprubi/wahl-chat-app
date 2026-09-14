@@ -54,23 +54,33 @@ export function assignCohort(uid: string): StudyCohort {
 }
 
 /**
- * Typeform link with hidden fields. Carries uid/trigger/context but NEVER the
- * cohort — participants must not be able to unblind themselves from the URL;
- * the group joins server-side via the participant doc. Returns null while the
- * form URL is not configured.
+ * The env var holds the questionnaire link exactly as the research team
+ * provides it (a Google-Forms prefill URL) with this placeholder where the
+ * uid belongs, e.g. `…/viewform?usp=pp_url&entry.834243217=<USER_ID>`.
  */
-export function questionnaireUrl(
-  uid: string,
-  trigger: QuestionnaireTrigger,
-  contextId?: string,
-): string | null {
-  const base = process.env.NEXT_PUBLIC_STUDY_TYPEFORM_URL;
+export const QUESTIONNAIRE_USER_ID_PLACEHOLDER = '<USER_ID>';
+
+/**
+ * Questionnaire link for one participant. Only the uid enters the URL — the
+ * trigger and context live in the participant's event log (joinable by uid),
+ * and the cohort is NEVER in the URL, so participants cannot unblind
+ * themselves. Returns null while the form URL is not configured.
+ */
+export function questionnaireUrl(uid: string): string | null {
+  const base = process.env.NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL;
   if (!base) {
     return null;
   }
-  const params = new URLSearchParams({ uid, trigger });
-  if (contextId) {
-    params.set('ctx', contextId);
+  if (!base.includes(QUESTIONNAIRE_USER_ID_PLACEHOLDER)) {
+    // Misconfigured URL: responses would be unlinkable. Still open the form
+    // (a response without a uid beats no response), but say so in dev.
+    console.warn(
+      '[Study] NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL has no <USER_ID> placeholder',
+    );
+    return base;
   }
-  return `${base}#${params.toString()}`;
+  return base.replace(
+    QUESTIONNAIRE_USER_ID_PLACEHOLDER,
+    encodeURIComponent(uid),
+  );
 }

@@ -101,14 +101,6 @@ class GroupChatTitleQuickReplyGenerator(BaseModel):
     )
 
 
-class RerankingOutput(BaseModel):
-    """Output of the Reranking Model."""
-
-    reranked_doc_indices: list[int] = Field(
-        description="Absteigend nach Nützlichkeit sortierte Liste der Indices der Dokumente"
-    )
-
-
 class PledgeEventHeadlines(BaseModel):
     """Output of the PledgeTracker event-headline generator (ingestion time)."""
 

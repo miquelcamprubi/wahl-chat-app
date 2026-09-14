@@ -177,6 +177,7 @@ export type ChatStoreActions = {
     chatSessionId,
     preSelectedPartyIds,
     initialQuestion,
+    prefilledQuestion,
     userId,
     tenant,
   }: {
@@ -184,7 +185,13 @@ export type ChatStoreActions = {
     messages?: GroupedMessage[];
     chatSessionId?: string;
     preSelectedPartyIds?: string[];
+    /** Sent immediately on hydration. */
     initialQuestion?: string;
+    /**
+     * Put into the input for the user to send themselves. Ignored when
+     * initialQuestion is set — a question is either sent or offered, never both.
+     */
+    prefilledQuestion?: string;
     userId: string;
     tenant?: Tenant;
   }) => void;

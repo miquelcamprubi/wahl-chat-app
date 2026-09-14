@@ -85,7 +85,7 @@ def test_party_slug_reuses_shared_tables() -> None:
     # Long-form small-party labels from the Berlin/MV pledge registries.
     assert party_slug("Piratenpartei Mecklenburg-Vorpommern") == "piraten"
     assert party_slug("Die PARTEI Mecklenburg-Vorpommern") == "die-partei"
-    assert party_slug("Partei der Humanisten Berlin") == "hpd"
+    assert party_slug("Partei der Humanisten Berlin") == "pdh"
 
 
 def test_party_slug_quarantines_unknown_labels() -> None:

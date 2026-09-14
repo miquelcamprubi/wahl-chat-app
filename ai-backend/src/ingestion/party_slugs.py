@@ -54,7 +54,7 @@ STATE_PARTY_SLUGS: dict[str, str] = {
     "diebasis": "basis",  # dieBasis alternate label
     "bürger in wut": "biw",  # Bürger in Wut (Bremen)
     "die partei": "die-partei",  # Die PARTEI
-    "partei der humanisten": "hpd",  # PdH
+    "partei der humanisten": "pdh",  # PdH
 }
 
 # Invisible / zero-width formatting characters that sources occasionally embed in

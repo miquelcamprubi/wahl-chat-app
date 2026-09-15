@@ -49,7 +49,10 @@ function HeroElection({ featured, contexts }: Props) {
             </SelectTrigger>
             <SelectContent
               align="center"
-              className="z-[60] max-h-96 max-w-[calc(100vw-2rem)] [&_[data-radix-select-viewport]]:h-auto [&_[data-radix-select-viewport]]:min-w-[min(100vw-2rem,20rem)]"
+              collisionPadding={24}
+              side="bottom"
+              sideOffset={8}
+              className="z-[60] max-h-[min(32rem,var(--radix-select-content-available-height))] max-w-[calc(100vw-2rem)] overflow-y-auto [&_[data-radix-select-viewport]]:h-auto [&_[data-radix-select-viewport]]:max-h-none [&_[data-radix-select-viewport]]:min-w-[min(100vw-2rem,20rem)]"
               aria-label="Verfügbare Wahlen"
             >
               <ElectionSelectItems

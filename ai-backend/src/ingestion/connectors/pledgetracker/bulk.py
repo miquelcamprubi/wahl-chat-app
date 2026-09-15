@@ -75,8 +75,16 @@ def _guard_firestore_target(allow_remote: bool = False) -> None:
 
     ENV=prod targets real Firestore as before. Every other ENV requires the
     emulator unless ``--allow-remote`` is passed explicitly — the deliberate
-    path for ingesting pledges into the deployed dev environment.
+    path for ingesting pledges into the deployed ENV Firebase project
+    (typically the hosted dev environment).
+
+    ``--allow-remote`` unsets ``FIRESTORE_EMULATOR_HOST``: local ``.env`` and
+    the Makefile routinely set it for emulator-mode development, and
+    ``firebase_service`` keys off that variable at import time. Leaving it in
+    place would make the flag a no-op and keep writing to the emulator.
     """
+    if allow_remote:
+        os.environ.pop("FIRESTORE_EMULATOR_HOST", None)
     env = os.getenv("ENV", "dev")
     if env == "prod" or os.getenv("FIRESTORE_EMULATOR_HOST"):
         return

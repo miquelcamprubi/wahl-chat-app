@@ -280,12 +280,15 @@ Requires `PLEDGETRACKER_API_KEY` in `ai-backend/.env` (gitignored — never comm
 it) and `PLEDGETRACKER_ENABLE_LIVE=true`; without them the runner ingests the
 packaged demo fixture offline. `FIRESTORE_EMULATOR_HOST` is mandatory unless
 `ENV=prod` (accidental-write guard); pass `--allow-remote` to deliberately
-ingest into the deployed dev environment without an emulator.
+ingest into the deployed dev environment without an emulator. The flag unsets
+the emulator host even if `.env` still has it (local mode sets it by default).
 
 ```bash
 FIRESTORE_EMULATOR_HOST=localhost:8081 make run-pledgetracker ARGS="--dry-run"
 FIRESTORE_EMULATOR_HOST=localhost:8081 PLEDGETRACKER_ENABLE_LIVE=true \
   make run-pledgetracker ARGS="--registry data/pledges/sachsen_anhalt_pledges.jsonl --batch-size 2"
+# Deployed dev Firestore (wahl-chat-dev), not the emulator:
+make run-pledgetracker ARGS="--allow-remote --registry data/pledges/sachsen_anhalt_pledges.jsonl --batch-size 2"
 # Backfill short event headlines only (LLM calls, no queue jobs / Qdrant writes):
 FIRESTORE_EMULATOR_HOST=localhost:8081 make run-pledgetracker ARGS="--backfill-titles"
 ```

@@ -22,14 +22,21 @@ Tests defined here:
     (or a truncated) registry is refused instead of deleting the collection.
   - test_reconcile_force_allows_mass_retirement: the same run proceeds when
     the retirement is explicitly intended.
+  - test_guard_allows_emulator_outside_prod / _prod_without_emulator /
+    _refuses_remote_dev_without_flag: accidental-write default.
+  - test_allow_remote_clears_emulator_host_for_dev: --allow-remote must win
+    over a leftover FIRESTORE_EMULATOR_HOST from .env / the Makefile.
 """
 
 from __future__ import annotations
+
+import os
 
 import pytest
 
 from src.ingestion.connectors.pledgetracker.bulk import (
     ReconcileBlocked,
+    _guard_firestore_target,
     _last_activity,
     _stale_pledge_ids,
     reconcile_registry,
@@ -213,3 +220,39 @@ def test_reconcile_force_allows_mass_retirement() -> None:
 
     assert docs_deleted == 4
     assert sorted(db.pledges.deleted_doc_ids) == [f"stored-{i}" for i in range(4)]
+
+
+# ---------------------------------------------------------------------------
+# _guard_firestore_target — accidental-write default + --allow-remote
+# ---------------------------------------------------------------------------
+
+
+def test_guard_allows_emulator_outside_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENV", "dev")
+    monkeypatch.setenv("FIRESTORE_EMULATOR_HOST", "localhost:8081")
+    _guard_firestore_target()
+
+
+def test_guard_allows_prod_without_emulator(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.delenv("FIRESTORE_EMULATOR_HOST", raising=False)
+    _guard_firestore_target()
+
+
+def test_guard_refuses_remote_dev_without_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENV", "dev")
+    monkeypatch.delenv("FIRESTORE_EMULATOR_HOST", raising=False)
+    with pytest.raises(RuntimeError, match="FIRESTORE_EMULATOR_HOST"):
+        _guard_firestore_target()
+
+
+def test_allow_remote_clears_emulator_host_for_dev(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--allow-remote must reach deployed ENV Firestore, not the leftover emulator."""
+    monkeypatch.setenv("ENV", "dev")
+    monkeypatch.setenv("FIRESTORE_EMULATOR_HOST", "localhost:8081")
+    _guard_firestore_target(allow_remote=True)
+    assert "FIRESTORE_EMULATOR_HOST" not in os.environ

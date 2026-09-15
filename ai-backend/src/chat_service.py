@@ -442,7 +442,12 @@ async def _safe_pledge_tracker_payload(
     region_path: Optional[List[str]] = None,
     query_vector: Optional[list[float]] = None,
 ):
-    """Best-effort PledgeTracker lookup; failures must never break chat answers.
+    """Best-effort PledgeTracker lookup: any failure returns None, never raises.
+
+    "Best-effort" covers failures, NOT latency. The caller awaits this before
+    emitting party_complete, so the lookup's cost (Qdrant search + relevance
+    gate + Firestore hydration) lands on that frame; the gate timeout bounds
+    the worst case. It is off the token-streaming path, not off the answer path.
 
     ``region_path`` is the stream-level value fetched once in
     generate_chat_stream — passed through so the pledge filter shares the

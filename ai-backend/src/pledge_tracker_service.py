@@ -9,6 +9,10 @@ party_id (tenant) and region ∈ context.region_path → an LLM relevance gate �
 Firestore hydration of the surviving pledge ids → PledgeTrackerSuggestions
 attached to the party_complete event.
 
+The chain runs inline before that event is emitted, so its cost is added to the
+answer's final frame rather than absorbed in the background. Token streaming is
+already finished by then, so it delays the answer's completion, not its text.
+
 The gate exists because top-k nearest-neighbor ranks but never judges: with few
 pledges per party the top 3 always include weak matches (observed: rank 1 at
 cosine ~0.68, ranks 2-3 in a ~0.30-0.36 noise floor). Dropping all candidates is
@@ -30,6 +34,9 @@ from src.models.structured_outputs import PledgeRelevanceOutput
 
 logger = logging.getLogger(__name__)
 
+# Caps the gate's share of the delay this lookup adds to party_complete: the
+# chain sits on the answer path, so an unresponsive LLM must not hold the
+# frame open. On timeout the gate keeps all candidates (see the filter below).
 _GATE_TIMEOUT_S = 8.0
 
 _RELEVANCE_PROMPT = """\

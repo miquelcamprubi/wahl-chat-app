@@ -2,15 +2,15 @@
  * Geometry shared by the two things that pin themselves to the top of the
  * landing page — the mark on the left and the call to action on the right.
  *
- * They have to agree, so the numbers live here rather than in each component:
- * the pinned height is a compromise between the button's natural 56px and the
- * mark's 30px, and was checked by measuring both once pinned.
+ * Top and inset have to agree so they land on one line; the heights do not.
+ * The mark keeps the size it already has in the hero, and only the button
+ * slims down to PINNED_HEIGHT.
  */
 
 export const PINNED_TOP = 12;
 /** Gutter from the viewport edge, matching the page's own px-5. */
 export const PINNED_INSET = 20;
-/** The height both settle at. */
+/** The height the call to action settles at. */
 export const PINNED_HEIGHT = 48;
 
 /**

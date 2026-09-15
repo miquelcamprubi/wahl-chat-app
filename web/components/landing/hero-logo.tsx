@@ -1,26 +1,29 @@
 'use client';
 
 import Logo from '@/components/chat/logo';
-import {
-  PINNED_HEIGHT,
-  PINNED_INSET,
-  PINNED_TOP,
-} from '@/components/landing/pinned-layout';
+import { PINNED_INSET, PINNED_TOP } from '@/components/landing/pinned-layout';
 import {
   clampProgress,
   lerp,
   useScrollMorph,
 } from '@/lib/hooks/use-scroll-morph';
+import { cn } from '@/lib/utils';
 import { m, useMotionValue } from 'motion/react';
 
 /**
  * The wordmark in the hero, which reduces to its C-and-tick glyph and pins
  * that to the top left as it scrolls away.
  *
- * Two phases. First the whole wordmark slides left until the C reaches the
- * gutter, so "WAHL." leaves past the edge of the page rather than dissolving
- * in place. Only then does the tail retract from the right, until the C is all
- * that is left.
+ * Two phases, both at the wordmark's own size. First both sides retract onto
+ * the C in place, so the leftover letters never sit over the headline as a
+ * wide, sliced wordmark. Only then does that small mark slide into the
+ * gutter. Growing to match the call to action made the morph shout; the C
+ * keeps the height it already has in the hero.
+ *
+ * It stays in the document flow until its placeholder reaches the pin line,
+ * then goes `fixed` at a constant top — the same contract as the call to
+ * action. See useScrollMorph for why interpolating `top` from scrollY would
+ * wobble under a flick.
  *
  * It masks the one large logo rather than cross-fading it into the standalone
  * icon: a cross-fade cannot make the mark *retract*, and it would put two
@@ -41,15 +44,14 @@ import { m, useMotionValue } from 'motion/react';
 /** The C-and-tick glyph inside the large wordmark, as fractions of its width. */
 const GLYPH_LEFT_FRACTION = 449.4 / 880;
 const GLYPH_RIGHT_FRACTION = 562.6 / 880;
-/** The glyph is very slightly shorter than the artwork it sits in. */
-const GLYPH_HEIGHT_FRACTION = 113.3 / 114;
 
-/** The wordmark starts only ~44px above its pinned position, so the morph is
- *  paced by scroll distance rather than by the gap to the edge. */
-const MORPH_DISTANCE = 180;
+/** The wordmark starts only ~12px above its pinned position, so the morph is
+ *  paced by scroll distance rather than by the gap to the edge. Kept short so
+ *  the collapse finishes before the headline has scrolled into the top band. */
+const MORPH_DISTANCE = 80;
 
-/** Where the slide ends and the retract begins. */
-const SLIDE_ENDS_AT = 0.55;
+/** Where the retract ends and the C begins sliding to the gutter. */
+const RETRACT_ENDS_AT = 0.45;
 
 /** How far a moving edge dissolves over, as a % of the artwork's width. */
 const EDGE_FADE = 7;
@@ -60,9 +62,7 @@ const percent = (value: number) => `${value.toFixed(2)}%`;
 const FULLY_OPAQUE_MASK = 'linear-gradient(to right, #000 0%, #000 100%)';
 
 function HeroLogo() {
-  const top = useMotionValue(0);
   const left = useMotionValue(0);
-  const scale = useMotionValue(1);
   const maskImage = useMotionValue(FULLY_OPAQUE_MASK);
   // A fixed element resolves percentages against the viewport, so the
   // artwork's own box has to be carried over explicitly — and re-set on every
@@ -70,42 +70,24 @@ function HeroLogo() {
   const width = useMotionValue(0);
   const height = useMotionValue(0);
 
-  const { placeholderRef, isReady } = useScrollMorph({
+  const { placeholderRef, isReady, isPinned } = useScrollMorph({
     pinnedTop: PINNED_TOP,
     morphDistance: MORPH_DISTANCE,
     onUpdate: ({ progress, box }) => {
-      const slide = clampProgress(progress / SLIDE_ENDS_AT);
-      const retract = clampProgress(
-        (progress - SLIDE_ENDS_AT) / (1 - SLIDE_ENDS_AT),
+      const retract = clampProgress(progress / RETRACT_ENDS_AT);
+      const slide = clampProgress(
+        (progress - RETRACT_ENDS_AT) / (1 - RETRACT_ENDS_AT),
       );
 
-      // Scaled so the glyph itself ends at the shared pinned height.
-      const glyphScale =
-        box.height === 0
-          ? 1
-          : lerp(
-              1,
-              PINNED_HEIGHT / (box.height * GLYPH_HEIGHT_FRACTION),
-              slide,
-            );
+      const hiddenLeft = lerp(0, GLYPH_LEFT_FRACTION * 100, retract);
+      const hiddenRight = lerp(0, (1 - GLYPH_RIGHT_FRACTION) * 100, retract);
+      const visibleRight = 100 - hiddenRight;
 
       // Positioned by where the *glyph* should land, so the clipped mark
       // travels to the corner rather than the artwork's invisible left edge.
       const glyphAtRest = box.left + GLYPH_LEFT_FRACTION * box.width;
       const glyphTarget = lerp(glyphAtRest, PINNED_INSET, slide);
-      const elementLeft =
-        glyphTarget - glyphScale * GLYPH_LEFT_FRACTION * box.width;
-
-      // The mask's left edge tracks the page gutter, so the wordmark slides
-      // out past it instead of being cut at an arbitrary point. It lands
-      // exactly on the glyph once the slide is done.
-      const scaledWidth = box.width * glyphScale;
-      const hiddenLeft =
-        scaledWidth === 0
-          ? 0
-          : clampProgress((PINNED_INSET - elementLeft) / scaledWidth) * 100;
-      const hiddenRight = lerp(0, (1 - GLYPH_RIGHT_FRACTION) * 100, retract);
-      const visibleRight = 100 - hiddenRight;
+      const elementLeft = glyphTarget - GLYPH_LEFT_FRACTION * box.width;
 
       // Each edge fades in from nothing as its cut starts to move and back to
       // nothing as the cut arrives at the glyph. So the mark at rest and the
@@ -125,11 +107,9 @@ function HeroLogo() {
         ),
       );
 
-      top.set(lerp(box.top, PINNED_TOP, slide));
       left.set(elementLeft);
       width.set(box.width);
       height.set(box.height);
-      scale.set(glyphScale);
       maskImage.set(
         `linear-gradient(to right, transparent ${percent(hiddenLeft)}, #000 ${percent(hiddenLeft + leftFade)}, #000 ${percent(visibleRight - rightFade)}, transparent ${percent(visibleRight)})`,
       );
@@ -144,22 +124,39 @@ function HeroLogo() {
     // height written from an earlier measurement.
     <div
       ref={placeholderRef}
-      className="aspect-[880/114] h-8 shrink-0 self-start md:h-10"
+      className="relative aspect-[880/114] h-8 shrink-0 self-start md:h-10"
     >
       {isReady ? (
+        // One element across both phases, never two branches: swapping the
+        // tree here would unmount the mark mid-scroll. pointer-events-none
+        // because a mask, unlike clip-path, leaves the masked-away box still
+        // hit-testable.
         <m.div
-          // pointer-events-none because a mask, unlike clip-path, leaves the
-          // masked-away box still hit-testable.
-          className="pointer-events-none fixed z-50 origin-top-left"
-          style={{
-            top,
-            left,
-            scale,
-            width,
-            height,
-            maskImage,
-            WebkitMaskImage: maskImage,
-          }}
+          className={cn(
+            'pointer-events-none z-50 origin-top-left',
+            isPinned ? 'fixed' : 'absolute',
+          )}
+          style={
+            isPinned
+              ? {
+                  top: PINNED_TOP,
+                  left,
+                  width,
+                  height,
+                  maskImage,
+                  WebkitMaskImage: maskImage,
+                }
+              : {
+                  // Static values so Motion drops the pinned `left`/`top` instead
+                  // of keeping the last motion-value write on the node.
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  maskImage,
+                  WebkitMaskImage: maskImage,
+                }
+          }
         >
           {logo}
         </m.div>

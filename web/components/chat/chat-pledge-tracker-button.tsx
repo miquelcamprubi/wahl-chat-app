@@ -13,6 +13,7 @@ type Props = {
   message: MessageItem | StreamingMessage;
   revealed?: boolean;
   onToggle?: () => void;
+  isLastMessage?: boolean;
 };
 
 // Per-session flag (resets each browser session) so the circling green glow
@@ -32,8 +33,14 @@ function ChatPledgeTrackerButton({
   message,
   revealed,
   onToggle,
+  isLastMessage,
 }: Props) {
-  const [showGlow, setShowGlow] = useState(false);
+  const [neverOpened, setNeverOpened] = useState(false);
+
+  // Only the newest answer glows, like the other action buttons: every pledge
+  // card in the scrollback glowing at once reads as an error, and clicking one
+  // would visibly calm only that card until the next render.
+  const showGlow = Boolean(isLastMessage) && neverOpened;
 
   // The trigger IS the pledge card (design review): the first matched
   // pledge's claim — the popup card without its date/source line.
@@ -43,11 +50,11 @@ function ChatPledgeTrackerButton({
 
   useEffect(() => {
     try {
-      setShowGlow(
+      setNeverOpened(
         window.sessionStorage.getItem(PLEDGE_TRACKER_OPENED_KEY) !== 'true',
       );
     } catch {
-      setShowGlow(false);
+      setNeverOpened(false);
     }
   }, []);
 
@@ -111,7 +118,7 @@ function ChatPledgeTrackerButton({
       message_id: message.id,
       pledges,
     });
-    setShowGlow(false);
+    setNeverOpened(false);
     try {
       window.sessionStorage.setItem(PLEDGE_TRACKER_OPENED_KEY, 'true');
     } catch {

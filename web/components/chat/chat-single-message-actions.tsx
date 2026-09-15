@@ -70,6 +70,7 @@ function ChatSingleMessageActions({
           message={message}
           revealed={pledgeRevealed}
           onToggle={onTogglePledgeTracker}
+          isLastMessage={isLastMessage}
         />
       )}
 

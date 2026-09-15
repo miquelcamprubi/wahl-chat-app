@@ -22,6 +22,21 @@ export type ChatSession = {
   };
   tenant_id?: string;
   context_id?: string;
+  visit_id?: string;
+};
+
+export type PageVisit = {
+  id: string;
+  user_id: string;
+  started_at: Date;
+  last_seen_at: Date;
+  visible_ms: number;
+  landing_path?: string;
+  last_path?: string;
+  context_id?: string;
+  tenant_id?: string;
+  chat_session_ids?: string[];
+  embedded?: boolean;
 };
 
 export type Context = {

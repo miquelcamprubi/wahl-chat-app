@@ -1,4 +1,8 @@
 import type { WahlChatUser } from '@/components/anonymous-auth';
+import {
+  getCurrentVisitId,
+  getOrLoadPageVisitSnapshot,
+} from '@/lib/page-visit/page-visit';
 import type { ProlificMetadata } from '@/lib/prolific-study/prolific-metadata';
 import type {
   GroupedMessage,
@@ -77,6 +81,71 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
   }
 }
 
+export async function upsertPageVisit(payload: {
+  visitId: string;
+  userId: string;
+  visibleMs: number;
+  startedAtMs: number;
+  landingPath: string;
+  lastPath: string;
+  contextId?: string;
+  tenantId?: string;
+  embedded?: boolean;
+  chatSessionId?: string;
+  includeCreateFields?: boolean;
+}): Promise<void> {
+  const data: Record<string, unknown> = {
+    user_id: payload.userId,
+    last_seen_at: Timestamp.now(),
+    visible_ms: payload.visibleMs,
+    last_path: payload.lastPath,
+  };
+  if (payload.includeCreateFields) {
+    data.started_at = Timestamp.fromMillis(payload.startedAtMs);
+    data.landing_path = payload.landingPath;
+    if (payload.embedded) {
+      data.embedded = true;
+    }
+  }
+  if (payload.contextId) {
+    data.context_id = payload.contextId;
+  }
+  if (payload.tenantId) {
+    data.tenant_id = payload.tenantId;
+  }
+  if (payload.chatSessionId) {
+    data.chat_session_ids = arrayUnion(payload.chatSessionId);
+  }
+  await setDoc(doc(db, 'page_visits', payload.visitId), data, { merge: true });
+}
+
+export async function attachChatSessionToPageVisit(
+  visitId: string,
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  const snapshot = getOrLoadPageVisitSnapshot();
+  const ref = doc(db, 'page_visits', visitId);
+  const existing = await getDoc(ref);
+  if (existing.exists()) {
+    // Do not rewrite visible_ms — a heartbeat may already have flushed a
+    // higher value, and the rules reject a decrease.
+    await updateDoc(ref, {
+      last_seen_at: Timestamp.now(),
+      chat_session_ids: arrayUnion(sessionId),
+    });
+    return;
+  }
+  await setDoc(ref, {
+    user_id: userId,
+    last_seen_at: Timestamp.now(),
+    chat_session_ids: arrayUnion(sessionId),
+    started_at: Timestamp.fromMillis(snapshot.startedAtMs),
+    visible_ms: snapshot.visibleMs,
+    landing_path: snapshot.landingPath,
+  });
+}
+
 export async function createChatSession(
   userId: string,
   partyIds: string[],
@@ -86,6 +155,7 @@ export async function createChatSession(
   prolificMetadata?: ProlificMetadata,
   studyGroup?: 'control' | 'experimental',
 ): Promise<void> {
+  const visitId = getCurrentVisitId();
   await setDoc(doc(db, 'chat_sessions', sessionId), {
     user_id: userId,
     party_ids: partyIds,
@@ -99,7 +169,15 @@ export async function createChatSession(
     // PledgeTracker study: cohort stamp so chat data joins to the study
     // without an extra lookup (mirrors the prolific metadata pattern).
     ...(studyGroup ? { study_group: studyGroup, is_pledge_study: true } : {}),
+    ...(visitId ? { visit_id: visitId } : {}),
   });
+  if (visitId) {
+    void attachChatSessionToPageVisit(visitId, sessionId, userId).catch(
+      (error) => {
+        console.error('Failed to attach chat session to page visit', error);
+      },
+    );
+  }
 }
 
 export async function getUsersChatHistory(uid: string): Promise<ChatSession[]> {

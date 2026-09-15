@@ -269,11 +269,14 @@ run-manifestos: bootstrap-collection
 # PledgeTracker: stub mode ingests the packaged fixture. Live mode (set
 # PLEDGETRACKER_ENABLE_LIVE=true + PLEDGETRACKER_API_KEY in ai-backend/.env)
 # submits registry pledges to the Cambridge queue API (~3 min GPU time per
-# pledge, one at a time). Requires FIRESTORE_EMULATOR_HOST unless ENV=prod.
+# pledge, one at a time). Local runs need FIRESTORE_EMULATOR_HOST. ENV=prod
+# already writes to real Firestore; for the deployed *dev* Firebase project
+# pass ARGS="--allow-remote" (the accidental-write guard otherwise refuses).
 # Examples:
 #   FIRESTORE_EMULATOR_HOST=localhost:8081 make run-pledgetracker ARGS="--dry-run"
 #   FIRESTORE_EMULATOR_HOST=localhost:8081 PLEDGETRACKER_ENABLE_LIVE=true \
 #     make run-pledgetracker ARGS="--registry data/pledges/sachsen_anhalt_pledges.jsonl --batch-size 2"
+#   make run-pledgetracker ARGS="--allow-remote --registry data/pledges/sachsen_anhalt_pledges.jsonl"
 run-pledgetracker: bootstrap-collection
 	cd ai-backend && $(QDRANT_ENV) FIRESTORE_EMULATOR_HOST=$(FIRESTORE_EMULATOR_HOST) \
 		uv run python -m src.ingestion.connectors.pledgetracker.bulk $(ARGS)

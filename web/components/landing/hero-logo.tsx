@@ -1,7 +1,11 @@
 'use client';
 
 import Logo from '@/components/chat/logo';
-import { PINNED_INSET, PINNED_TOP } from '@/components/landing/pinned-layout';
+import {
+  PINNED_HEIGHT,
+  PINNED_INSET,
+  PINNED_TOP,
+} from '@/components/landing/pinned-layout';
 import {
   clampProgress,
   lerp,
@@ -132,12 +136,14 @@ function HeroLogo() {
   return (
     <>
       {/* Invisible, out of flow: only here so the morph can read width/left
-          from CSS (h-8 / md:h-10). left-5 matches the page gutter (px-5),
-          which is also PINNED_INSET — absolute left-0 would sit on the
-          padding edge and measure 20px too far left. */}
+          from CSS. Height is PINNED_HEIGHT so the C and the pinned pill stay
+          the same size. left-5 matches the page gutter (px-5), which is also
+          PINNED_INSET — absolute left-0 would sit on the padding edge and
+          measure 20px too far left. */}
       <div
         ref={placeholderRef}
-        className="pointer-events-none invisible absolute left-5 top-0 aspect-[880/114] h-8 md:h-10"
+        className="pointer-events-none invisible absolute left-5 top-0 aspect-[880/114]"
+        style={{ height: PINNED_HEIGHT }}
         aria-hidden="true"
       />
       {isReady ? (
@@ -158,8 +164,12 @@ function HeroLogo() {
         </m.div>
       ) : (
         <div
-          className="pointer-events-none fixed z-50 aspect-[880/114] h-8 origin-top-left md:h-10"
-          style={{ top: PINNED_TOP, left: PINNED_INSET }}
+          className="pointer-events-none fixed z-50 aspect-[880/114] origin-top-left"
+          style={{
+            top: PINNED_TOP,
+            left: PINNED_INSET,
+            height: PINNED_HEIGHT,
+          }}
         >
           {logo}
         </div>

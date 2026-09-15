@@ -21,7 +21,7 @@ import type {
   PledgeTimelineEvent,
 } from '@/lib/stores/chat-store.types';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ExternalLink, SquareCheckBig } from 'lucide-react';
+import { ChevronDown, ExternalLink, Target } from 'lucide-react';
 import { useState } from 'react';
 
 type Props = {
@@ -56,7 +56,7 @@ function ChatPledgeTracker({ message, open, onOpenChange }: Props) {
         <ResponsiveDialogHeader className="shrink-0 space-y-0 border-b border-border px-5 py-4 text-left sm:text-left">
           <ResponsiveDialogTitle className="text-base">
             <span className="flex items-center gap-2.5">
-              <SquareCheckBig className="size-5 shrink-0 text-emerald-500" />
+              <Target className="size-5 shrink-0 text-emerald-500" />
               <a
                 href={PLEDGE_TRACKER_BRAND.url}
                 target="_blank"

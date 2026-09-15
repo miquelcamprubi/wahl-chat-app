@@ -11,7 +11,7 @@ import { Timestamp } from 'firebase/firestore';
  */
 export const acceptStudyConsent: ChatStoreActionHandlerFor<
   'acceptStudyConsent'
-> = (_get, set) => async (userId, contextId) => {
+> = (_get, set) => async (userId, contextId, partyIds) => {
   const group = assignCohort(userId);
   set({ studyConsent: 'accepted', studyCohort: group });
   try {
@@ -20,6 +20,7 @@ export const acceptStudyConsent: ChatStoreActionHandlerFor<
       consent_at: Timestamp.now(),
       group,
       context_id: contextId,
+      party_ids: partyIds,
     });
   } catch (error) {
     console.error('[Study] failed to persist consent:', error);

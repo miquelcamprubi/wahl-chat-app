@@ -116,7 +116,15 @@ export type StudyParticipant = {
   consent_answer: 'accepted' | 'declined';
   consent_at: Timestamp;
   group?: 'control' | 'experimental';
+  /** Election context the consent was answered in — set on accept AND decline. */
   context_id?: string;
+  /**
+   * Parties selected when the consent was answered, sorted. Recorded for both
+   * answers so refusal can be modelled against party choice (the hypothesis:
+   * users who came to chat with one specific party opt in less often). `[]`
+   * means no party was selected yet; absent means a pre-2026-09 record.
+   */
+  party_ids?: string[];
   questionnaire_clicked_at?: Timestamp;
   events?: StudyParticipantEvent[];
 };

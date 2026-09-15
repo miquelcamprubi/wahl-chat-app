@@ -284,13 +284,23 @@ export type ChatStoreActions = {
   setStudyEnabled: (enabled: boolean) => void;
   setPledgeModalOpen: (open: boolean) => void;
   hydrateStudyParticipant: (userId: string) => Promise<void>;
-  acceptStudyConsent: (userId: string, contextId: string) => Promise<void>;
-  declineStudyConsent: (userId: string) => Promise<void>;
+  acceptStudyConsent: (
+    userId: string,
+    contextId: string,
+    partyIds: string[],
+  ) => Promise<void>;
+  declineStudyConsent: (
+    userId: string,
+    contextId: string,
+    partyIds: string[],
+  ) => Promise<void>;
   recordStudyEvent: (
     type: string,
     options?: { trigger?: string; merge?: Partial<StudyParticipant> },
   ) => Promise<void>;
   incrementStudyPromptCount: () => void;
+  /** Dev-only: flip the cohort locally. Never written to Firestore. */
+  setStudyCohortOverride: (cohort: StudyCohort) => void;
   setStudyQuestionnaireClicked: (clicked: boolean) => void;
 };
 

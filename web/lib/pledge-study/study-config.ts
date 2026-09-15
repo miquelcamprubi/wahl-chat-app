@@ -54,33 +54,47 @@ export function assignCohort(uid: string): StudyCohort {
 }
 
 /**
- * The env var holds the questionnaire link exactly as the research team
- * provides it (a Google-Forms prefill URL) with this placeholder where the
- * uid belongs, e.g. `…/viewform?usp=pp_url&entry.834243217=<USER_ID>`.
+ * The study questionnaire's Fillout form.
+ *
+ * Hardcoded like every other Fillout form in this app (survey-banner, login
+ * reminder, wahl-swiper) so the questionnaire works on a fresh checkout and on
+ * both deployments with no env setup — a reviewer can test the flow by
+ * cloning, and dev/prod need no Vercel variable. A form id is public anyway:
+ * it is in the URL every respondent sees, and this repo is public.
+ *
+ * The study's real off-switch is the Firestore kill switch
+ * (system_status/pledge_study), which takes effect instantly and needs no
+ * deploy — so the questionnaire does not need a second one.
  */
-export const QUESTIONNAIRE_USER_ID_PLACEHOLDER = '<USER_ID>';
+export const STUDY_QUESTIONNAIRE_FORM_ID = 's9muKGX2zcus';
 
 /**
- * Questionnaire link for one participant. Only the uid enters the URL — the
- * trigger and context live in the participant's event log (joinable by uid),
- * and the cohort is NEVER in the URL, so participants cannot unblind
- * themselves. Returns null while the form URL is not configured.
+ * Fillout form id to open, parsed from NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL
+ * when that is set (point a branch at a test form by pasting its link, e.g.
+ * `https://forms.fillout.com/t/<id>`; a bare id works too), otherwise the
+ * default above.
+ *
+ * `user_id` and `chat_session_id` are passed to the embed as parameters. The
+ * cohort is NEVER passed, so participants cannot unblind themselves.
  */
-export function questionnaireUrl(uid: string): string | null {
-  const base = process.env.NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL;
-  if (!base) {
-    return null;
+export function questionnaireFormId(): string {
+  const configured = process.env.NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL?.trim();
+  if (!configured) {
+    return STUDY_QUESTIONNAIRE_FORM_ID;
   }
-  if (!base.includes(QUESTIONNAIRE_USER_ID_PLACEHOLDER)) {
-    // Misconfigured URL: responses would be unlinkable. Still open the form
-    // (a response without a uid beats no response), but say so in dev.
-    console.warn(
-      '[Study] NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL has no <USER_ID> placeholder',
-    );
-    return base;
+  if (!configured.includes('/')) {
+    return configured;
   }
-  return base.replace(
-    QUESTIONNAIRE_USER_ID_PLACEHOLDER,
-    encodeURIComponent(uid),
+  try {
+    const id = new URL(configured).pathname.split('/').filter(Boolean).pop();
+    if (id) {
+      return id;
+    }
+  } catch {
+    // Not a parseable URL — fall through to the warning.
+  }
+  console.warn(
+    '[Study] NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL is not a Fillout form link or id — using the default form',
   );
+  return STUDY_QUESTIONNAIRE_FORM_ID;
 }

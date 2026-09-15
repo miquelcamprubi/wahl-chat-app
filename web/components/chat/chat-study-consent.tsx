@@ -10,7 +10,7 @@ import {
 } from '@/components/chat/responsive-drawer-dialog';
 import { useChatStore } from '@/components/providers/chat-store-provider';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 type Props = {
   userId: string;
@@ -20,13 +20,19 @@ type Props = {
 /**
  * Two-stage study consent, shown in a fresh chat before the first message:
  * a short ask, then (on „Ja") the full Einverständniserklärung. Any „Nein"
- * is persisted and permanent per uid. Closing without answering only hides
- * the dialog for this visit — nothing is written, so it may ask again.
+ * is persisted and permanent per uid — and so is dismissing the dialog
+ * (Escape, overlay click, drawer swipe): only an explicit „Ja" enrols, so a
+ * non-answer is recorded as a decline instead of being re-asked next visit.
+ * That also keeps the consent denominator complete for the analysis: every
+ * participant who was asked leaves a record.
  * The reviewed German copy is verbatim from the research team.
  */
 function ChatStudyConsent({ userId, contextId }: Props) {
   const studyConsent = useChatStore((state) => state.studyConsent);
   const messagesCount = useChatStore((state) => state.messages.length);
+  // Selected at hydration, before the first message, so this is the party the
+  // user actually came to chat with when the ask appeared.
+  const partyIds = useChatStore((state) => state.partyIds);
   const loadingChatSession = useChatStore((state) => state.loading.chatSession);
   const acceptStudyConsent = useChatStore((state) => state.acceptStudyConsent);
   const declineStudyConsent = useChatStore(
@@ -34,25 +40,39 @@ function ChatStudyConsent({ userId, contextId }: Props) {
   );
 
   const [step, setStep] = useState<'ask' | 'einverstaendnis'>('ask');
-  const [dismissed, setDismissed] = useState(false);
+  // Latched synchronously by whichever path answers first. The dialog is
+  // controlled, and ResponsiveDialog mounts a Drawer and a Dialog on the same
+  // handler, so a close event can still arrive after „Ja" — without this latch
+  // it would overwrite the acceptance with a decline.
+  const answered = useRef(false);
 
   const open =
-    !dismissed &&
-    studyConsent === undefined &&
-    messagesCount === 0 &&
-    !loadingChatSession;
+    studyConsent === undefined && messagesCount === 0 && !loadingChatSession;
 
   const decline = () => {
-    void declineStudyConsent(userId);
+    if (answered.current) {
+      return;
+    }
+    answered.current = true;
+    void declineStudyConsent(userId, contextId, [...partyIds].sort());
   };
   const accept = () => {
-    void acceptStudyConsent(userId, contextId);
+    if (answered.current) {
+      return;
+    }
+    answered.current = true;
+    void acceptStudyConsent(userId, contextId, [...partyIds].sort());
   };
 
   return (
     <ResponsiveDialog
       open={open}
-      onOpenChange={(nextOpen) => !nextOpen && setDismissed(true)}
+      onOpenChange={(nextOpen) => {
+        // Dismissing without answering counts as declining participation.
+        if (!nextOpen) {
+          decline();
+        }
+      }}
     >
       <ResponsiveDialogContent>
         {step === 'ask' ? (

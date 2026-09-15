@@ -1,5 +1,6 @@
 'use client';
 
+import '@fillout/react/style.css';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -15,8 +16,9 @@ import {
   MODAL_LONGSTOP_MS,
   QUESTIONNAIRE_DELAY_MS,
   type QuestionnaireTrigger,
-  questionnaireUrl,
+  questionnaireFormId,
 } from '@/lib/pledge-study/study-config';
+import { FilloutPopupEmbed } from '@fillout/react';
 import { Timestamp } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -46,6 +48,10 @@ type Props = {
  */
 function ChatStudyQuestionnairePrompt({ userId }: Props) {
   const studyConsent = useChatStore((state) => state.studyConsent);
+  // The Firestore chat_sessions doc id (promoted from safeSessionId on the
+  // first send), so a response joins to the chat and, through
+  // page_visits.chat_session_ids, to that visit's dwell time.
+  const chatSessionId = useChatStore((state) => state.chatSessionId);
   const firstAnswerCompletedAt = useChatStore(
     (state) => state.firstAnswerCompletedAt,
   );
@@ -66,16 +72,15 @@ function ChatStudyQuestionnairePrompt({ userId }: Props) {
   const [activePrompt, setActivePrompt] = useState<{
     trigger: QuestionnaireTrigger;
   } | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const prevModalOpenRef = useRef(false);
 
-  // NEXT_PUBLIC_ vars are inlined at build time; unset = prompt disabled.
-  const urlConfigured = Boolean(
-    process.env.NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL,
-  );
+  // Always resolves: the default form id is committed, and the env var only
+  // overrides it. Turning the questionnaire off is the kill switch's job.
+  const formId = questionnaireFormId();
 
   const eligible =
     studyConsent === 'accepted' &&
-    urlConfigured &&
     !studyQuestionnaireClicked &&
     studyPromptCount < MAX_PROMPTS &&
     activePrompt === null;
@@ -148,10 +153,7 @@ function ChatStudyQuestionnairePrompt({ userId }: Props) {
     if (!activePrompt) {
       return;
     }
-    const url = questionnaireUrl(userId);
-    if (url) {
-      window.open(url, '_blank', 'noopener');
-    }
+    setFormOpen(true);
     setStudyQuestionnaireClicked(true);
     void recordStudyEvent('questionnaire_clicked', {
       trigger: activePrompt.trigger,
@@ -161,36 +163,51 @@ function ChatStudyQuestionnairePrompt({ userId }: Props) {
   };
 
   return (
-    <ResponsiveDialog
-      open={activePrompt !== null}
-      onOpenChange={(nextOpen) => !nextOpen && dismiss()}
-    >
-      <ResponsiveDialogContent>
-        <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle>Deine Rückmeldung zählt</ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            Kurzer Fragebogen zur Studie
-          </ResponsiveDialogDescription>
-        </ResponsiveDialogHeader>
-        <div className="px-4 text-sm md:px-0">
-          <p>
-            Danke, dass du bei unserer Studie mitmachst! Wir würden dir gern ein
-            paar kurze Fragen zu deinem heutigen Besuch stellen — es dauert
-            höchstens 2 Minuten.
-          </p>
-        </div>
-        <ResponsiveDialogFooter>
-          <div className="flex w-full flex-col gap-2 sm:flex-row">
-            <Button variant="outline" className="w-full" onClick={dismiss}>
-              Später
-            </Button>
-            <Button className="w-full" onClick={openQuestionnaire}>
-              Zum Fragebogen
-            </Button>
+    <>
+      <ResponsiveDialog
+        open={activePrompt !== null}
+        onOpenChange={(nextOpen) => !nextOpen && dismiss()}
+      >
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>
+              Deine Rückmeldung zählt
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Kurzer Fragebogen zur Studie
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <div className="px-4 text-sm md:px-0">
+            <p>
+              Danke, dass du bei unserer Studie mitmachst! Wir würden dir gern
+              ein paar kurze Fragen zu deinem heutigen Besuch stellen — es
+              dauert höchstens 2 Minuten.
+            </p>
           </div>
-        </ResponsiveDialogFooter>
-      </ResponsiveDialogContent>
-    </ResponsiveDialog>
+          <ResponsiveDialogFooter>
+            <div className="flex w-full flex-col gap-2 sm:flex-row">
+              <Button variant="outline" className="w-full" onClick={dismiss}>
+                Später
+              </Button>
+              <Button className="w-full" onClick={openQuestionnaire}>
+                Zum Fragebogen
+              </Button>
+            </div>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+      {formOpen && (
+        <FilloutPopupEmbed
+          filloutId={formId}
+          parameters={{
+            user_id: userId,
+            chat_session_id: chatSessionId,
+          }}
+          onClose={() => setFormOpen(false)}
+          inheritParameters
+        />
+      )}
+    </>
   );
 }
 

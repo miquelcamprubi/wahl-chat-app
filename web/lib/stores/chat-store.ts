@@ -1,3 +1,4 @@
+import { writeDevCohortOverride } from '@/lib/pledge-study/dev-cohort-override';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { createStore } from 'zustand/vanilla';
@@ -137,6 +138,10 @@ export function createChatStore(initialState?: Partial<ChatStore>) {
           }),
         setStudyQuestionnaireClicked: (studyQuestionnaireClicked) =>
           set({ studyQuestionnaireClicked }),
+        setStudyCohortOverride: (studyCohort) => {
+          writeDevCohortOverride(studyCohort);
+          set({ studyCohort });
+        },
         hydrateStudyParticipant: hydrateStudyParticipant(get, set),
         acceptStudyConsent: acceptStudyConsent(get, set),
         declineStudyConsent: declineStudyConsent(get, set),

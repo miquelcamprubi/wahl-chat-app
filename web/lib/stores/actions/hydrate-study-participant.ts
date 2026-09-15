@@ -1,4 +1,5 @@
 import { getStudyParticipant } from '@/lib/firebase/firebase';
+import { readDevCohortOverride } from '@/lib/pledge-study/dev-cohort-override';
 import type { ChatStoreActionHandlerFor } from '@/lib/stores/chat-store.types';
 
 /**
@@ -22,7 +23,9 @@ export const hydrateStudyParticipant: ChatStoreActionHandlerFor<
     set({
       studyHydrated: true,
       studyConsent: participant?.consent_answer,
-      studyCohort: participant?.group,
+      // Dev-only override wins over the persisted assignment; a no-op in any
+      // production build (see dev-cohort-override.ts).
+      studyCohort: readDevCohortOverride() ?? participant?.group,
       studyPromptCount: promptCount,
       studyQuestionnaireClicked: Boolean(participant?.questionnaire_clicked_at),
     });

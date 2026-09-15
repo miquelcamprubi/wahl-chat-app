@@ -311,13 +311,20 @@ PledgeTracker change users' willingness to engage in political debate?
 - **Kill switch**: Firestore doc `system_status/pledge_study` `{enabled: true}`.
   Missing doc/field/error = off (the safe default); flipping it is a console
   edit, no deploy (locally: create the doc in the emulator UI). The
-  questionnaire prompt additionally needs `NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL`
-  (the Google-Forms prefill link with a `<USER_ID>` placeholder).
+  The questionnaire form id is COMMITTED (`STUDY_QUESTIONNAIRE_FORM_ID` in
+  `web/lib/pledge-study/study-config.ts`), like every other Fillout form here,
+  so a fresh checkout and both deployments work with no env setup;
+  `NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL` only overrides it for a test form.
 - **Flow**: fresh chat in a study context → two-stage consent (short ask, then
-  the Einverständniserklärung). A „Nein" is permanent per uid. A „Ja" assigns
-  the cohort — deterministic hash(uid+salt), p=0.5 — and persists
-  `study_participants/{uid}` (the analysis source of truth). NEVER change the
-  salt while the study runs.
+  the Einverständniserklärung). A „Nein" is permanent per uid, and dismissing
+  the dialog (Escape, overlay click, drawer swipe) is recorded as that same
+  „Nein" — only an explicit „Ja" enrols, and everyone who was asked leaves a
+  record, so the consent denominator is complete. A „Ja" assigns the cohort —
+  deterministic hash(uid+salt), p=0.5 — and persists `study_participants/{uid}`
+  (the analysis source of truth). NEVER change the salt while the study runs.
+  Both answers also record `context_id` and `party_ids` (the parties selected
+  when the ask appeared), so non-response can be modelled rather than just
+  counted — refusal by election, and by the party the user came to chat with.
 - **Gate** (`web/lib/pledge-study/gate.ts`): in a study context with the study
   on, ONLY consented experimental participants see PledgeTracker. Control and
   non-consented users see nothing — pre-exposure would contaminate a later
@@ -330,12 +337,26 @@ PledgeTracker change users' willingness to engage in political debate?
 - **Questionnaire prompts** (identical for both cohorts — control symmetry):
   a timer 15s after the FIRST completed answer (fires only while idle), an
   immediate prompt on pledge-modal close, and a 90s longstop inside a modal;
-  max 2 prompts ever, cap survives reloads. Only the uid enters the
-  questionnaire URL (Google-Forms prefill parameter); trigger/context stay in
-  the event log, and the cohort is never in the URL (no self-unblinding).
+  max 2 prompts ever, cap survives reloads. The form opens IN-APP via
+  `FilloutPopupEmbed` (same pattern as `survey-banner.tsx`), carrying
+  `user_id` + `chat_session_id` as parameters; trigger/context stay in the
+  event log, and the cohort is never passed (no self-unblinding). While the
+  study is on, consented participants are shown NO other survey — the general
+  feedback banner suppresses itself (`survey-banner.tsx`) so two prompts never
+  compete; the suppression ignores the cohort, so both arms stay identical.
 - **Analysis joins**: `study_participants/{uid}` ↔ `chat_sessions.user_id`
-  (sessions are also stamped `study_group` + `is_pledge_study`) ↔ the
-  questionnaire's prefilled `uid` field.
+  (sessions are also stamped `study_group` + `is_pledge_study`) ↔
+  `page_visits.user_id`/`chat_session_ids` (dwell time) ↔ the questionnaire's
+  `user_id` + `chat_session_id` answers. The uid is the Firebase anonymous uid
+  throughout.
+- **Dev tooling**: `ChatStudyDevBar` (mounted in `app/[contextId]/session/layout.tsx`)
+  shows the live gate inputs and flips the cohort. Local dev only — gated on
+  `NODE_ENV === 'development'` at both the mount and inside the component, so
+  it can never render on a deployment (the module is still bundled: a
+  `'use client'` import is a client reference and survives tree-shaking).
+  Client-side only — the override lives in localStorage and
+  `study_participants` is never written, so it cannot corrupt a real
+  assignment. Reset drops the override and restores the hashed one.
 - Known simplifications: the idle predicate tracks streaming and the pledge
   modal (not every uncontrolled dialog); the kill switch is client-read only
   (default-off hides everything until the snapshot arrives); a second device

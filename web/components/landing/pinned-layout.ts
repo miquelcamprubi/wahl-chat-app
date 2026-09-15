@@ -3,8 +3,8 @@
  * landing page — the mark on the left and the call to action on the right.
  *
  * Top and inset have to agree so they land on one line; the heights do not.
- * The mark keeps the size it already has in the hero, and only the button
- * slims down to PINNED_HEIGHT.
+ * The mark is fixed at PINNED_TOP from the first paint (no vertical settle),
+ * and only the button slims down to PINNED_HEIGHT.
  */
 
 export const PINNED_TOP = 12;

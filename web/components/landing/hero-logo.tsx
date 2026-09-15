@@ -7,25 +7,24 @@ import {
   lerp,
   useScrollMorph,
 } from '@/lib/hooks/use-scroll-morph';
-import { cn } from '@/lib/utils';
 import { m, useMotionValue } from 'motion/react';
 
 /**
- * The wordmark in the hero, which reduces to its C-and-tick glyph and pins
- * that to the top left as it scrolls away.
+ * The wordmark in the hero, which reduces to its C-and-tick glyph.
+ *
+ * It is `fixed` at the header from the first paint: sitting in the document
+ * flow and then flipping to a pinned top made the mark overshoot and snap
+ * back up a frame later. Horizontal travel is still driven from scroll.
  *
  * Two phases, all at the wordmark's own size. First the C slides to the
  * gutter and pushes "WAHL." off the left edge of the page — the mask's left
  * cut tracks that gutter, so those letters leave past the edge rather than
  * dissolving through the middle of the headline. Then the tail to the right
- * of the C retracts, until the mark is all that is left. Growing to match
- * the call to action made the morph shout; the C keeps the height it already
- * has in the hero.
+ * of the C retracts, until the mark is all that is left.
  *
- * It stays in the document flow until its placeholder reaches the pin line,
- * then goes `fixed` at a constant top — the same contract as the call to
- * action. See useScrollMorph for why interpolating `top` from scrollY would
- * wobble under a flick.
+ * A zero-flow sizer (not the visible mark) is what useScrollMorph measures,
+ * so width/left stay honest across the md breakpoint without a hole where
+ * the wordmark used to sit.
  *
  * It masks the one large logo rather than cross-fading it into the standalone
  * icon: a cross-fade cannot make the mark *retract*, and it would put two
@@ -47,9 +46,9 @@ import { m, useMotionValue } from 'motion/react';
 const GLYPH_LEFT_FRACTION = 449.4 / 880;
 const GLYPH_RIGHT_FRACTION = 562.6 / 880;
 
-/** The wordmark starts only ~12px above its pinned position, so the morph is
- *  paced by scroll distance rather than by the gap to the edge. Kept short so
- *  the collapse finishes before the headline has scrolled into the top band. */
+/** Paced by scroll distance rather than by a gap to the edge — the mark is
+ *  already at the pin line. Kept short so the collapse finishes before the
+ *  headline has scrolled into the top band. */
 const MORPH_DISTANCE = 80;
 
 /** Where the C has finished pushing "WAHL." off the gutter. */
@@ -64,8 +63,7 @@ const percent = (value: number) => `${value.toFixed(2)}%`;
 const FULLY_OPAQUE_MASK = 'linear-gradient(to right, #000 0%, #000 100%)';
 
 function HeroLogo() {
-  const left = useMotionValue(0);
-  const x = useMotionValue(0);
+  const left = useMotionValue(PINNED_INSET);
   const maskImage = useMotionValue(FULLY_OPAQUE_MASK);
   // A fixed element resolves percentages against the viewport, so the
   // artwork's own box has to be carried over explicitly — and re-set on every
@@ -73,7 +71,7 @@ function HeroLogo() {
   const width = useMotionValue(0);
   const height = useMotionValue(0);
 
-  const { placeholderRef, isReady, isPinned } = useScrollMorph({
+  const { placeholderRef, isReady } = useScrollMorph({
     pinnedTop: PINNED_TOP,
     morphDistance: MORPH_DISTANCE,
     onUpdate: ({ progress, box }) => {
@@ -121,7 +119,6 @@ function HeroLogo() {
       );
 
       left.set(elementLeft);
-      x.set(elementLeft - box.left);
       width.set(box.width);
       height.set(box.height);
       maskImage.set(
@@ -133,53 +130,41 @@ function HeroLogo() {
   const logo = <Logo variant="large" className="size-full" />;
 
   return (
-    // Sized in CSS from the artwork's own aspect ratio, so it keeps measuring
-    // honestly across the md breakpoint instead of reading back a stale inline
-    // height written from an earlier measurement.
-    <div
-      ref={placeholderRef}
-      className="relative aspect-[880/114] h-8 shrink-0 self-start md:h-10"
-    >
+    <>
+      {/* Invisible, out of flow: only here so the morph can read width/left
+          from CSS (h-8 / md:h-10). left-5 matches the page gutter (px-5),
+          which is also PINNED_INSET — absolute left-0 would sit on the
+          padding edge and measure 20px too far left. */}
+      <div
+        ref={placeholderRef}
+        className="pointer-events-none invisible absolute left-5 top-0 aspect-[880/114] h-8 md:h-10"
+        aria-hidden="true"
+      />
       {isReady ? (
-        // One element across both phases, never two branches: swapping the
-        // tree here would unmount the mark mid-scroll. pointer-events-none
-        // because a mask, unlike clip-path, leaves the masked-away box still
-        // hit-testable.
+        // pointer-events-none because a mask, unlike clip-path, leaves the
+        // masked-away box still hit-testable.
         <m.div
-          className={cn(
-            'pointer-events-none z-50 origin-top-left',
-            isPinned ? 'fixed' : 'absolute',
-          )}
-          style={
-            isPinned
-              ? {
-                  top: PINNED_TOP,
-                  left,
-                  x: 0,
-                  width,
-                  height,
-                  maskImage,
-                  WebkitMaskImage: maskImage,
-                }
-              : {
-                  // Static left/top so Motion drops the pinned writes; `x`
-                  // carries the C toward the gutter while still in flow.
-                  top: 0,
-                  left: 0,
-                  x,
-                  width: '100%',
-                  height: '100%',
-                  maskImage,
-                  WebkitMaskImage: maskImage,
-                }
-          }
+          className="pointer-events-none fixed z-50 origin-top-left"
+          style={{
+            top: PINNED_TOP,
+            left,
+            width,
+            height,
+            maskImage,
+            WebkitMaskImage: maskImage,
+          }}
         >
           {logo}
         </m.div>
       ) : (
-        logo
+        <div
+          className="pointer-events-none fixed z-50 aspect-[880/114] h-8 origin-top-left md:h-10"
+          style={{ top: PINNED_TOP, left: PINNED_INSET }}
+        >
+          {logo}
+        </div>
       )}
-    </div>
+    </>
   );
 }
 

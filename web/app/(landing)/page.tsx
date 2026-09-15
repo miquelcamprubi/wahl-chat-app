@@ -197,7 +197,9 @@ export default async function Landing() {
             at the foot of a tall viewport reads as unrelated to the headline —
             so md: collapses the text and the button back into one centred
             group while the mark stays in its own top row. */}
-        <div className="relative flex flex-1 flex-col px-5 py-6 md:py-14">
+        {/* Top padding has to clear the fixed header mark (12px + h-8 / h-10)
+            now that the wordmark is no longer in this column's flow. */}
+        <div className="relative flex flex-1 flex-col px-5 pt-12 pb-6 md:pt-16 md:pb-14">
           <HeroLogo />
 
           <div className="flex flex-1 flex-col items-center gap-6 text-center">

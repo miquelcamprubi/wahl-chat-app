@@ -14,11 +14,13 @@ import { m, useMotionValue } from 'motion/react';
  * The wordmark in the hero, which reduces to its C-and-tick glyph and pins
  * that to the top left as it scrolls away.
  *
- * Two phases, both at the wordmark's own size. First both sides retract onto
- * the C in place, so the leftover letters never sit over the headline as a
- * wide, sliced wordmark. Only then does that small mark slide into the
- * gutter. Growing to match the call to action made the morph shout; the C
- * keeps the height it already has in the hero.
+ * Two phases, all at the wordmark's own size. First the C slides to the
+ * gutter and pushes "WAHL." off the left edge of the page — the mask's left
+ * cut tracks that gutter, so those letters leave past the edge rather than
+ * dissolving through the middle of the headline. Then the tail to the right
+ * of the C retracts, until the mark is all that is left. Growing to match
+ * the call to action made the morph shout; the C keeps the height it already
+ * has in the hero.
  *
  * It stays in the document flow until its placeholder reaches the pin line,
  * then goes `fixed` at a constant top — the same contract as the call to
@@ -50,8 +52,8 @@ const GLYPH_RIGHT_FRACTION = 562.6 / 880;
  *  the collapse finishes before the headline has scrolled into the top band. */
 const MORPH_DISTANCE = 80;
 
-/** Where the retract ends and the C begins sliding to the gutter. */
-const RETRACT_ENDS_AT = 0.45;
+/** Where the C has finished pushing "WAHL." off the gutter. */
+const LEFT_ENDS_AT = 0.55;
 
 /** How far a moving edge dissolves over, as a % of the artwork's width. */
 const EDGE_FADE = 7;
@@ -63,6 +65,7 @@ const FULLY_OPAQUE_MASK = 'linear-gradient(to right, #000 0%, #000 100%)';
 
 function HeroLogo() {
   const left = useMotionValue(0);
+  const x = useMotionValue(0);
   const maskImage = useMotionValue(FULLY_OPAQUE_MASK);
   // A fixed element resolves percentages against the viewport, so the
   // artwork's own box has to be carried over explicitly — and re-set on every
@@ -74,20 +77,30 @@ function HeroLogo() {
     pinnedTop: PINNED_TOP,
     morphDistance: MORPH_DISTANCE,
     onUpdate: ({ progress, box }) => {
-      const retract = clampProgress(progress / RETRACT_ENDS_AT);
-      const slide = clampProgress(
-        (progress - RETRACT_ENDS_AT) / (1 - RETRACT_ENDS_AT),
+      const slide = clampProgress(progress / LEFT_ENDS_AT);
+      const retractRight = clampProgress(
+        (progress - LEFT_ENDS_AT) / (1 - LEFT_ENDS_AT),
       );
 
-      const hiddenLeft = lerp(0, GLYPH_LEFT_FRACTION * 100, retract);
-      const hiddenRight = lerp(0, (1 - GLYPH_RIGHT_FRACTION) * 100, retract);
-      const visibleRight = 100 - hiddenRight;
-
-      // Positioned by where the *glyph* should land, so the clipped mark
-      // travels to the corner rather than the artwork's invisible left edge.
+      // Positioned by where the *glyph* should land, so the C pushes
+      // "WAHL." off the gutter rather than the artwork's left edge travelling.
       const glyphAtRest = box.left + GLYPH_LEFT_FRACTION * box.width;
       const glyphTarget = lerp(glyphAtRest, PINNED_INSET, slide);
       const elementLeft = glyphTarget - GLYPH_LEFT_FRACTION * box.width;
+
+      // The mask's left edge tracks the page gutter, so "WAHL." is cut as it
+      // leaves the page rather than dissolving in place. It lands exactly on
+      // the glyph once the C has arrived.
+      const hiddenLeft =
+        box.width === 0
+          ? 0
+          : clampProgress((PINNED_INSET - elementLeft) / box.width) * 100;
+      const hiddenRight = lerp(
+        0,
+        (1 - GLYPH_RIGHT_FRACTION) * 100,
+        retractRight,
+      );
+      const visibleRight = 100 - hiddenRight;
 
       // Each edge fades in from nothing as its cut starts to move and back to
       // nothing as the cut arrives at the glyph. So the mark at rest and the
@@ -108,6 +121,7 @@ function HeroLogo() {
       );
 
       left.set(elementLeft);
+      x.set(elementLeft - box.left);
       width.set(box.width);
       height.set(box.height);
       maskImage.set(
@@ -141,16 +155,18 @@ function HeroLogo() {
               ? {
                   top: PINNED_TOP,
                   left,
+                  x: 0,
                   width,
                   height,
                   maskImage,
                   WebkitMaskImage: maskImage,
                 }
               : {
-                  // Static values so Motion drops the pinned `left`/`top` instead
-                  // of keeping the last motion-value write on the node.
+                  // Static left/top so Motion drops the pinned writes; `x`
+                  // carries the C toward the gutter while still in flow.
                   top: 0,
                   left: 0,
+                  x,
                   width: '100%',
                   height: '100%',
                   maskImage,

@@ -135,8 +135,7 @@ async def aretrieve_pledge_tracker_suggestions(
 
     payloads = cast(
         list[dict],
-        await asyncio.to_thread(
-            retrieve,
+        await retrieve(
             query,
             source_type="pledge_record",
             party_id=party_id,

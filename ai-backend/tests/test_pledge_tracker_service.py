@@ -70,7 +70,9 @@ def _wire(monkeypatch: pytest.MonkeyPatch, payloads: list[dict]) -> dict:
     """Fake retrieve/hydration; record retrieve kwargs + hydrated ids."""
     calls: dict = {"hydrated": None, "retrieve_kwargs": None}
 
-    def fake_retrieve(query: str, **kwargs):
+    # Async, like the real retrieve() — a sync fake would keep passing even if
+    # the service stopped awaiting it.
+    async def fake_retrieve(query: str, **kwargs):
         calls["retrieve_kwargs"] = {"query": query, **kwargs}
         return payloads
 

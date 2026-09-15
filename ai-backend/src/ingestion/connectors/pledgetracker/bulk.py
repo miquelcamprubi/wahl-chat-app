@@ -95,8 +95,11 @@ def _guard_firestore_target(allow_remote: bool = False) -> None:
 
 
 def _write_pledge_record(db, record: PledgeRecord) -> None:  # type: ignore[no-untyped-def]
+    # exclude_none with merge=True: a registry row that omits optional metadata
+    # (context_id, source title/url) must not overwrite a richer stored record
+    # with explicit nulls.
     db.collection("pledges").document(record.pledge_id).set(
-        record.model_dump(mode="json"),
+        record.model_dump(mode="json", exclude_none=True),
         merge=True,
     )
 
@@ -383,22 +386,37 @@ def _stale_pledge_ids(registry_ids: set[str], existing_ids: Iterable[str]) -> se
     return {pledge_id for pledge_id in existing_ids if pledge_id not in registry_ids}
 
 
+class ReconcileBlocked(RuntimeError):
+    """Reconcile would retire more pledges than the registry manages."""
+
+
 def reconcile_registry(
     qdrant: QdrantClient,
     db,  # type: ignore[no-untyped-def]
     pledge_inputs: list[PledgeInput],
     collection_name: str = COLLECTION_NAME,
+    *,
+    force: bool = False,
 ) -> tuple[int, int]:
     """Retire pledges that are no longer in the registry (edited or removed).
 
     The pledge id contains the claim text, so editing a claim mints a NEW id —
     without this step the old Firestore doc and Qdrant point stay publicly
     readable and retrievable forever (same for deleted rows). Scoped to the
-    registry's own regions so one registry can never delete another registry's
-    pledges — the pledge-side equivalent of the manifesto supersede rule.
+    registry's own regions — the pledge-side equivalent of the manifesto
+    supersede rule.
+
+    Region scope alone is not a sufficient guard: two registries covering the
+    same region would each see the other's pledges as stale. So a run that
+    would retire more pledges than the registry itself manages is refused —
+    the signature of the wrong registry file or a truncated one. ``force``
+    overrides it for a deliberate bulk retirement.
 
     Returns:
         (qdrant_points_deleted, firestore_docs_deleted)
+
+    Raises:
+        ReconcileBlocked: the retire set is implausibly large and force is off.
     """
     registry_ids = {pledge.resolved_pledge_id() for pledge in pledge_inputs}
     regions = {pledge.region for pledge in pledge_inputs}
@@ -436,6 +454,28 @@ def reconcile_registry(
             break
 
     stale_ids = _stale_pledge_ids(registry_ids, point_ids_by_pledge)
+
+    # Firestore can be wider than Qdrant (e.g. a crash left a doc without a
+    # vector), so scan the collection too — same region scope. Docs carrying
+    # only ops fields have no region yet and are left alone.
+    stale_doc_ids = [
+        snapshot.id
+        for snapshot in db.collection("pledges").stream()
+        if (snapshot.to_dict() or {}).get("region") in regions
+        and snapshot.id not in registry_ids
+    ]
+
+    # Decide before deleting anything.
+    retire_count = len(stale_ids | set(stale_doc_ids))
+    if not force and retire_count > len(registry_ids):
+        raise ReconcileBlocked(
+            f"Reconcile would retire {retire_count} pledge(s) in regions "
+            f"{sorted(regions)} while the registry manages only "
+            f"{len(registry_ids)} — refusing. This usually means the wrong "
+            f"--registry file, or a registry that lost rows. Re-run with "
+            f"--force-reconcile if the retirement is intended."
+        )
+
     stale_point_ids = [
         point_id
         for pledge_id in stale_ids
@@ -447,18 +487,11 @@ def reconcile_registry(
             points_selector=models.PointIdsList(points=stale_point_ids),
         )
 
-    # Firestore can be wider than Qdrant (e.g. a crash left a doc without a
-    # vector), so scan the collection too — same region scope.
-    docs_deleted = 0
-    for snapshot in db.collection("pledges").stream():
-        data = snapshot.to_dict() or {}
-        if data.get("region") not in regions or snapshot.id in registry_ids:
-            continue
-        db.collection("pledges").document(snapshot.id).delete()
-        docs_deleted += 1
-        print(f"reconcile: retired pledge {snapshot.id}")
+    for doc_id in stale_doc_ids:
+        db.collection("pledges").document(doc_id).delete()
+        print(f"reconcile: retired pledge {doc_id}")
 
-    return (len(stale_point_ids), docs_deleted)
+    return (len(stale_point_ids), len(stale_doc_ids))
 
 
 def backfill_titles(db) -> tuple[int, int]:  # type: ignore[no-untyped-def]
@@ -565,6 +598,14 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
+        "--force-reconcile",
+        action="store_true",
+        help=(
+            "Allow reconcile to retire more pledges than the registry manages "
+            "(refused by default, since that usually means the wrong registry)"
+        ),
+    )
+    parser.add_argument(
         "--allow-remote",
         action="store_true",
         help=(
@@ -662,7 +703,10 @@ if __name__ == "__main__":
                 )
             if not args.skip_reconcile:
                 points_deleted, docs_deleted = reconcile_registry(
-                    qdrant, db, load_pledge_registry(args.registry)
+                    qdrant,
+                    db,
+                    load_pledge_registry(args.registry),
+                    force=args.force_reconcile,
                 )
                 print(
                     f"reconcile: qdrant_points_deleted={points_deleted} "

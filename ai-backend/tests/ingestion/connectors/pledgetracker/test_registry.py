@@ -8,6 +8,10 @@ Pledge registry unit tests (JSONL loader, region mapping, party resolution, ids)
 Tests defined here:
   - test_loads_committed_sample_registry: the committed sample parses; region codes
     are ISO 3166-2 (DE-ST) so they match context region_path elements.
+  - test_committed_registries_do_not_overlap: the default (sample) registry shares
+    no region with a real one, so a default-argument run cannot retire real pledges.
+  - test_state_registry_rows_are_uniquely_identified: no id collisions within a
+    registry (a collision merges two pledges into one record).
   - test_region_codes_are_iso_3166_2: every Bundesland maps to a DE-XX code.
   - test_party_slug_reuses_shared_tables: canonical + state tables resolve labels,
     including labels with a trailing Bundesland ("CDU Sachsen-Anhalt").
@@ -37,6 +41,7 @@ from src.ingestion.schemas import SourceType
 
 _AI_BACKEND = Path(__file__).resolve().parents[4]
 _SAMPLE_REGISTRY = _AI_BACKEND / "data/pledges/sample_pledges.jsonl"
+_SACHSEN_ANHALT_REGISTRY = _AI_BACKEND / "data/pledges/sachsen_anhalt_pledges.jsonl"
 
 
 def _cdu_input() -> PledgeInput:
@@ -51,20 +56,38 @@ def _cdu_input() -> PledgeInput:
 def test_loads_committed_sample_registry() -> None:
     """The committed sample parses; ISO region codes match context region_paths."""
     inputs = load_pledge_registry(_SAMPLE_REGISTRY)
-    assert len(inputs) == 2
+    assert len(inputs) == 1
 
-    cdu, spd = inputs
-    assert cdu.resolved_party_id() == "cdu"
-    assert cdu.region == "DE-ST"
-    assert cdu.region_path == ["DE", "DE-ST"]
-    assert cdu.job_inputs()["bundesland"] == "Sachsen-Anhalt"
-    assert cdu.job_inputs()["time_range"] == "since_pledge_date"
-
+    (spd,) = inputs
     # The SPD row pins its pledge_id so re-ingestion upserts the same doc.
     assert spd.resolved_pledge_id() == "spd-mindestlohn-12-euro-de-2021"
+    assert spd.resolved_party_id() == "spd"
     assert spd.region == "DE"
     assert spd.region_path == ["DE"]
     assert "bundesland" not in spd.job_inputs()
+    assert spd.job_inputs()["time_range"] == "since_pledge_date"
+
+
+def test_committed_registries_do_not_overlap() -> None:
+    """Reconcile retires per region, so the shipped registries must not share one.
+
+    The sample is the default registry: if it covered a region that a real
+    registry also covers, a default-argument run would retire that registry's
+    pledges as "no longer in the registry".
+    """
+    sample_regions = {row.region for row in load_pledge_registry(_SAMPLE_REGISTRY)}
+    state_regions = {
+        row.region for row in load_pledge_registry(_SACHSEN_ANHALT_REGISTRY)
+    }
+    assert sample_regions.isdisjoint(state_regions)
+
+
+def test_state_registry_rows_are_uniquely_identified() -> None:
+    """One id per row: a collision would silently merge two pledges into one."""
+    rows = load_pledge_registry(_SACHSEN_ANHALT_REGISTRY)
+    ids = [row.resolved_pledge_id() for row in rows]
+    assert len(set(ids)) == len(rows)
+    assert {row.region for row in rows} == {"DE-ST"}
 
 
 def test_region_codes_are_iso_3166_2() -> None:

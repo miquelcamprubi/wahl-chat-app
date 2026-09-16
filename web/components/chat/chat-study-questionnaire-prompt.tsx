@@ -180,8 +180,8 @@ function ChatStudyQuestionnairePrompt({ userId }: Props) {
           <div className="px-4 text-sm md:px-0">
             <p>
               Danke, dass du bei unserer Studie mitmachst! Wir würden dir gern
-              ein paar kurze Fragen zu deinem heutigen Besuch stellen — es
-              dauert höchstens 2 Minuten.
+              ein paar kurze Fragen zu deinem heutigen Besuch stellen, es dauert
+              höchstens 2 Minuten.
             </p>
           </div>
           <ResponsiveDialogFooter>

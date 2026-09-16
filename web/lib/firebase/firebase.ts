@@ -3,6 +3,7 @@ import {
   getCurrentVisitId,
   getOrLoadPageVisitSnapshot,
 } from '@/lib/page-visit/page-visit';
+import type { StudyCohort } from '@/lib/pledge-study/types';
 import type { ProlificMetadata } from '@/lib/prolific-study/prolific-metadata';
 import type {
   GroupedMessage,
@@ -153,7 +154,7 @@ export async function createChatSession(
   tenantId?: string,
   contextId?: string,
   prolificMetadata?: ProlificMetadata,
-  studyGroup?: 'control' | 'experimental',
+  studyCohort?: StudyCohort,
 ): Promise<void> {
   const visitId = getCurrentVisitId();
   await setDoc(doc(db, 'chat_sessions', sessionId), {
@@ -168,7 +169,9 @@ export async function createChatSession(
       : {}),
     // PledgeTracker study: cohort stamp so chat data joins to the study
     // without an extra lookup (mirrors the prolific metadata pattern).
-    ...(studyGroup ? { study_group: studyGroup, is_pledge_study: true } : {}),
+    ...(studyCohort
+      ? { study_cohort: studyCohort, is_pledge_study: true }
+      : {}),
     ...(visitId ? { visit_id: visitId } : {}),
   });
   if (visitId) {

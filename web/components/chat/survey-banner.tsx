@@ -3,6 +3,7 @@
 import '@fillout/react/style.css';
 import { useAnonymousAuth } from '@/components/anonymous-auth';
 import { useChatStore } from '@/components/providers/chat-store-provider';
+import { useStudyRunning } from '@/components/providers/study-status-provider';
 import { Button } from '@/components/ui/button';
 import { SURVEY_BANNER_MIN_MESSAGE_COUNT } from '@/lib/stores/chat-store';
 import { FilloutPopupEmbed } from '@fillout/react';
@@ -13,8 +14,7 @@ import { useEffect, useState } from 'react';
 
 function SurveyBanner() {
   const sessionId = useChatStore((state) => state.chatSessionId);
-  const studyEnabled = useChatStore((state) => state.studyEnabled);
-  const studyConsent = useChatStore((state) => state.studyConsent);
+  const studyRunning = useStudyRunning();
   const [open, setOpen] = useState(false);
   const { user, updateUser, loading } = useAnonymousAuth();
   const showSurveyBanner = useChatStore(
@@ -80,17 +80,16 @@ function SurveyBanner() {
 
   if (!optimisticShowSurveyBanner) return null;
 
-  // PledgeTracker study: a participant must only ever be asked to fill in the
-  // study questionnaire. Two surveys competing for the same goodwill depress
-  // the response rate on the one the study depends on.
+  // While the study runs, the study questionnaire is the only thing we ask
+  // for. Two surveys competing for the same goodwill depress the response rate
+  // on the one the study depends on.
   //
-  // The predicate deliberately ignores the cohort, so control and experimental
-  // are exposed identically (differential survey exposure would confound the
-  // experiment), and it is tied to the kill switch rather than to consent
-  // alone, so the banner returns for everyone the moment the study is switched
-  // off instead of staying muted forever for past participants. Users who
-  // declined keep the normal product throughout.
-  if (studyEnabled && studyConsent === 'accepted') return null;
+  // Suppressed for everyone, not only consenters: someone who declines is
+  // still a study subject whose session should look like everyone else's. The
+  // rule ignores the cohort, so both arms are treated identically, and it is
+  // tied to the kill switch, so the banner returns for everyone the moment the
+  // study ends.
+  if (studyRunning) return null;
 
   return (
     <div className="flex flex-col gap-2 rounded-lg bg-muted p-4 group-data-[has-message-background]:mx-4 group-data-[has-message-background]:mb-4 group-data-[has-message-background]:bg-zinc-200 group-data-[has-message-background]:dark:bg-zinc-800">

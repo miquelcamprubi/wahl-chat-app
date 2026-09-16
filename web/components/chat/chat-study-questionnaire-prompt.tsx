@@ -27,24 +27,22 @@ type Props = {
 };
 
 /**
- * Questionnaire prompt engine — the ratified trigger design, identical for
- * BOTH cohorts (control symmetry; "pledge card seen" is deliberately not an
- * arming condition):
+ * Shows the questionnaire prompt.
  *
- * - timer:       QUESTIONNAIRE_DELAY_MS after the FIRST answer completes,
- *                fired only while idle (no streaming, no open pledge modal —
- *                the effect re-arms whenever idleness returns). First prompt
- *                only.
- * - modal_close: closing the pledge popup prompts immediately — measurement
- *                right after the treatment episode ends, never inside it.
- *                Also the single retry path after a dismissed prompt.
- * - longstop:    a pledge modal open for MODAL_LONGSTOP_MS prompts anyway
- *                (catches abandoned tabs mid-modal).
+ * Both cohorts use the same rules. Seeing a pledge card is not a condition.
  *
- * Hard cap MAX_PROMPTS across reloads (count is derived from the persisted
- * event log on hydrate). Timing asymmetry between cohorts can only arise
- * from the participant's own use of the feature — part of the treatment —
- * never from group-dependent scheduling rules.
+ * Three triggers can show the prompt:
+ *
+ * 1. timer: fires QUESTIONNAIRE_DELAY_MS after the first answer completes.
+ *    That is when the user starts reading. An open pledge modal delays it.
+ *    This trigger fires only once.
+ * 2. modal_close: fires when the user closes the pledge modal. This is the
+ *    only trigger that can show a second prompt.
+ * 3. longstop: fires if the pledge modal stays open for MODAL_LONGSTOP_MS.
+ *    It catches a tab that the user left open.
+ *
+ * MAX_PROMPTS is the hard limit. The count comes from the stored event log,
+ * so it survives a reload.
  */
 function ChatStudyQuestionnairePrompt({ userId }: Props) {
   const studyConsent = useChatStore((state) => state.studyConsent);
@@ -56,7 +54,6 @@ function ChatStudyQuestionnairePrompt({ userId }: Props) {
     (state) => state.firstAnswerCompletedAt,
   );
   const pledgeModalOpen = useChatStore((state) => state.pledgeModalOpen);
-  const streaming = useChatStore((state) => state.loading.newMessage);
   const studyPromptCount = useChatStore((state) => state.studyPromptCount);
   const studyQuestionnaireClicked = useChatStore(
     (state) => state.studyQuestionnaireClicked,
@@ -94,13 +91,15 @@ function ChatStudyQuestionnairePrompt({ userId }: Props) {
     [incrementStudyPromptCount, recordStudyEvent],
   );
 
-  // timer — first prompt only; re-arms whenever idleness returns, so the
-  // remaining delay naturally defers past streaming and open modals.
+  // timer: first prompt only. An open pledge modal delays it; a follow-up
+  // answer that is still streaming does not. Waiting for the stream to finish
+  // used to push the prompt past its delay, so it then fired instantly at the
+  // next idle moment, which interrupts more than a scheduled prompt does.
   useEffect(() => {
     if (!eligible || studyPromptCount > 0) {
       return;
     }
-    if (firstAnswerCompletedAt === undefined || pledgeModalOpen || streaming) {
+    if (firstAnswerCompletedAt === undefined || pledgeModalOpen) {
       return;
     }
     const remaining = Math.max(
@@ -114,7 +113,6 @@ function ChatStudyQuestionnairePrompt({ userId }: Props) {
     studyPromptCount,
     firstAnswerCompletedAt,
     pledgeModalOpen,
-    streaming,
     showPrompt,
   ]);
 

@@ -1,4 +1,3 @@
-import { writeDevCohortOverride } from '@/lib/pledge-study/dev-cohort-override';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { createStore } from 'zustand/vanilla';
@@ -71,6 +70,7 @@ const defaultState: ChatStoreState = {
   studyEnabled: undefined,
   studyConsent: undefined,
   studyCohort: undefined,
+  studyOverride: undefined,
   studyHydrated: false,
   studyPromptCount: 0,
   studyQuestionnaireClicked: false,
@@ -130,7 +130,12 @@ export function createChatStore(initialState?: Partial<ChatStore>) {
           }),
         setProlificMessageCount: (prolificMessageCount) =>
           set({ prolificMessageCount }),
-        setStudyEnabled: (studyEnabled) => set({ studyEnabled }),
+        // A forced session ignores the kill switch: without this, the
+        // Firestore snapshot would arrive and switch the study back off.
+        setStudyEnabled: (studyEnabled) =>
+          set((state) => {
+            state.studyEnabled = state.studyOverride ? true : studyEnabled;
+          }),
         setPledgeModalOpen: (pledgeModalOpen) => set({ pledgeModalOpen }),
         incrementStudyPromptCount: () =>
           set((state) => {
@@ -138,10 +143,6 @@ export function createChatStore(initialState?: Partial<ChatStore>) {
           }),
         setStudyQuestionnaireClicked: (studyQuestionnaireClicked) =>
           set({ studyQuestionnaireClicked }),
-        setStudyCohortOverride: (studyCohort) => {
-          writeDevCohortOverride(studyCohort);
-          set({ studyCohort });
-        },
         hydrateStudyParticipant: hydrateStudyParticipant(get, set),
         acceptStudyConsent: acceptStudyConsent(get, set),
         declineStudyConsent: declineStudyConsent(get, set),

@@ -77,7 +77,7 @@ describe('assignCohort', () => {
   it('splits roughly evenly across realistic Firebase uids', () => {
     const alphabet =
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let experimental = 0;
+    let manipulation = 0;
     const total = 20_000;
     for (let i = 0; i < total; i++) {
       let uid = '';
@@ -86,11 +86,11 @@ describe('assignCohort', () => {
       }
       // Vary the uid beyond the deterministic pattern above.
       uid += String(i);
-      if (assignCohort(uid) === 'experimental') {
-        experimental++;
+      if (assignCohort(uid) === 'manipulation') {
+        manipulation++;
       }
     }
-    const share = experimental / total;
+    const share = manipulation / total;
     expect(share).toBeGreaterThan(0.45);
     expect(share).toBeLessThan(0.55);
   });

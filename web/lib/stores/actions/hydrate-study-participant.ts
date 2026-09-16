@@ -1,6 +1,9 @@
-import { getStudyParticipant } from '@/lib/firebase/firebase';
-import { readDevCohortOverride } from '@/lib/pledge-study/dev-cohort-override';
+import {
+  getStudyParticipant,
+  setStudyParticipant,
+} from '@/lib/firebase/firebase';
 import type { ChatStoreActionHandlerFor } from '@/lib/stores/chat-store.types';
+import { Timestamp } from 'firebase/firestore';
 
 /**
  * Consent is sticky per uid: seed the store from study_participants/{uid} so a
@@ -8,13 +11,15 @@ import type { ChatStoreActionHandlerFor } from '@/lib/stores/chat-store.types';
  * count is derived from the persisted event log so the questionnaire cap
  * survives reloads.
  *
- * On a read failure the store is marked hydrated-but-unanswered: the consent
- * dialog may show again, which is harmless — the cohort hash is deterministic,
- * so a re-consent writes the identical assignment.
+ * A ?sg= override beats the persisted record, in both branches — on a read
+ * failure the override must still apply, or a tester who forced a variant gets
+ * the real consent dialog instead.
  */
 export const hydrateStudyParticipant: ChatStoreActionHandlerFor<
   'hydrateStudyParticipant'
-> = (_get, set) => async (userId) => {
+> = (get, set) => async (userId) => {
+  const override = get().studyOverride;
+
   try {
     const participant = await getStudyParticipant(userId);
     const promptCount =
@@ -22,15 +27,30 @@ export const hydrateStudyParticipant: ChatStoreActionHandlerFor<
         .length ?? 0;
     set({
       studyHydrated: true,
-      studyConsent: participant?.consent_answer,
-      // Dev-only override wins over the persisted assignment; a no-op in any
-      // production build (see dev-cohort-override.ts).
-      studyCohort: readDevCohortOverride() ?? participant?.group,
+      studyConsent: override?.consent ?? participant?.consent_answer,
+      studyCohort: override?.cohort ?? participant?.cohort,
       studyPromptCount: promptCount,
       studyQuestionnaireClicked: Boolean(participant?.questionnaire_clicked_at),
     });
   } catch (error) {
     console.error('[Study] failed to hydrate participant:', error);
-    set({ studyHydrated: true });
+    set({
+      studyHydrated: true,
+      studyConsent: override?.consent,
+      studyCohort: override?.cohort,
+    });
+  }
+
+  if (override) {
+    // Marker fields ONLY. Never consent_answer or cohort: if this uid happens
+    // to be a genuine participant, their real assignment must survive intact
+    // and merely gain the exclusion flag.
+    void setStudyParticipant(userId, {
+      assignment_source: 'override',
+      override_variant: override.variant,
+      override_at: Timestamp.now(),
+    }).catch((error) => {
+      console.error('[Study] failed to flag forced assignment:', error);
+    });
   }
 };

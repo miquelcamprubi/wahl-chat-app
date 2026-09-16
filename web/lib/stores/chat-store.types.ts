@@ -8,6 +8,7 @@ import type {
   StudyCohort,
   StudyConsentAnswer,
 } from '@/lib/pledge-study/study-config';
+import type { StudyOverride } from '@/lib/pledge-study/variant-override';
 import type { ProlificMetadata } from '@/lib/prolific-study/prolific-metadata';
 import type {
   PartyResponseChunkReadyPayload,
@@ -172,6 +173,14 @@ export type ChatStoreState = {
   /** undefined = not answered yet (the consent dialog may show). */
   studyConsent?: StudyConsentAnswer;
   studyCohort?: StudyCohort;
+  /**
+   * Forced variant from a ?sg= link. Seeded once at store construction and
+   * never mutated, so no writer can race it. Must NOT be read by any render
+   * path: it is absent on the server and present on the client, which would
+   * be a hydration mismatch. Everything visible flows through studyConsent /
+   * studyCohort / studyEnabled instead.
+   */
+  studyOverride?: StudyOverride;
   /** study_participants/{uid} has been read for the current uid. */
   studyHydrated?: boolean;
   /** Questionnaire prompts shown so far (mirror of the persisted event log). */
@@ -299,8 +308,6 @@ export type ChatStoreActions = {
     options?: { trigger?: string; merge?: Partial<StudyParticipant> },
   ) => Promise<void>;
   incrementStudyPromptCount: () => void;
-  /** Dev-only: flip the cohort locally. Never written to Firestore. */
-  setStudyCohortOverride: (cohort: StudyCohort) => void;
   setStudyQuestionnaireClicked: (clicked: boolean) => void;
 };
 

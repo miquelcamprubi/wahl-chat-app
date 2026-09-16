@@ -39,7 +39,7 @@ function ChatStudyConsent({ userId, contextId }: Props) {
     (state) => state.declineStudyConsent,
   );
 
-  const [step, setStep] = useState<'ask' | 'einverstaendnis'>('ask');
+  const [step, setStep] = useState<'ask' | 'consent'>('ask');
   // Latched synchronously by whichever path answers first. The dialog is
   // controlled, and ResponsiveDialog mounts a Drawer and a Dialog on the same
   // handler, so a close event can still arrive after „Ja" — without this latch
@@ -97,10 +97,7 @@ function ChatStudyConsent({ userId, contextId }: Props) {
                 <Button variant="outline" className="w-full" onClick={decline}>
                   Nein
                 </Button>
-                <Button
-                  className="w-full"
-                  onClick={() => setStep('einverstaendnis')}
-                >
+                <Button className="w-full" onClick={() => setStep('consent')}>
                   Ja
                 </Button>
               </div>
@@ -136,7 +133,7 @@ function ChatStudyConsent({ userId, contextId }: Props) {
               </p>
               <p>
                 Die Studie ist DSGVO-konform, da keine personenbezogenen Daten
-                erhoben werden, die dich identifizieren – erhoben werden
+                erhoben werden, die dich identifizieren. Erhoben werden
                 ausschließlich Altersgruppe, Geschlecht und politische
                 Orientierung.
               </p>

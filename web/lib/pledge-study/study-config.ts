@@ -1,5 +1,7 @@
 'use client';
 
+import type { StudyCohort } from './types';
+
 /**
  * PledgeTracker study configuration (the Vlachos-group experiment).
  *
@@ -18,9 +20,15 @@ export const STUDY_CONTEXT_IDS = [
   'landtagswahl-mecklenburg-vorpommern-2026',
 ] as const;
 
-export type StudyCohort = 'control' | 'experimental';
-export type StudyConsentAnswer = 'accepted' | 'declined';
 export type QuestionnaireTrigger = 'timer' | 'modal_close' | 'longstop';
+
+// The data vocabulary lives in ./types (a non-client module, because the
+// Firestore documents it describes are read by server code too).
+export type {
+  StudyCohort,
+  StudyConsentAnswer,
+  StudyParticipation,
+} from './types';
 
 // Questionnaire prompt timing — named constants so the researchers can tune
 // without a code hunt (see the study runbook in AGENTS.md).
@@ -50,7 +58,7 @@ export function assignCohort(uid: string): StudyCohort {
     hash ^= input.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193);
   }
-  return (hash >>> 0) % 2 === 0 ? 'control' : 'experimental';
+  return (hash >>> 0) % 2 === 0 ? 'control' : 'manipulation';
 }
 
 /**

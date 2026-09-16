@@ -1,4 +1,10 @@
 import type { Topic } from '@/components/topics/topics.data';
+import type {
+  StudyAssignmentSource,
+  StudyCohort,
+  StudyConsentAnswer,
+  StudyParticipation,
+} from '@/lib/pledge-study/types';
 import type { ProlificMetadata } from '@/lib/prolific-study/prolific-metadata';
 import type { GroupedMessage } from '@/lib/stores/chat-store.types';
 import type { WahlSwiperResultHistory } from '@/lib/wahl-swiper/wahl-swiper.types';
@@ -8,7 +14,7 @@ export type ChatSession = {
   id: string;
   user_id: string;
   /** PledgeTracker study: cohort stamp for joining chat data to the study. */
-  study_group?: 'control' | 'experimental';
+  study_cohort?: StudyCohort;
   is_pledge_study?: boolean;
   party_id?: string;
   is_public?: boolean;
@@ -113,9 +119,21 @@ export type StudyParticipantEvent = {
  * analysis time (min/count per type), so the doc stays append-mostly.
  */
 export type StudyParticipant = {
-  consent_answer: 'accepted' | 'declined';
+  consent_answer: StudyConsentAnswer;
   consent_at: Timestamp;
-  group?: 'control' | 'experimental';
+  /** Derived from consent_answer; stored so queries need not infer it. */
+  participation?: StudyParticipation;
+  /** Only participants have an arm. */
+  cohort?: StudyCohort;
+  /**
+   * 'override' marks a row whose arm was forced by a ?sg= link. EXCLUDE these
+   * from analysis: they are testers, not participants, and counting them would
+   * skew the 50:50 split. Absent means 'hash'.
+   */
+  assignment_source?: StudyAssignmentSource;
+  /** Which ?sg= variant forced this row, when assignment_source is 'override'. */
+  override_variant?: string;
+  override_at?: Timestamp;
   /** Election context the consent was answered in — set on accept AND decline. */
   context_id?: string;
   /**

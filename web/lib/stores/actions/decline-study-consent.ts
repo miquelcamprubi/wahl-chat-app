@@ -1,4 +1,5 @@
 import { setStudyParticipant } from '@/lib/firebase/firebase';
+import { participationFor } from '@/lib/pledge-study/types';
 import type { ChatStoreActionHandlerFor } from '@/lib/stores/chat-store.types';
 import { Timestamp } from 'firebase/firestore';
 
@@ -21,6 +22,7 @@ export const declineStudyConsent: ChatStoreActionHandlerFor<
     await setStudyParticipant(userId, {
       consent_answer: 'declined',
       consent_at: Timestamp.now(),
+      participation: participationFor('declined'),
       context_id: contextId,
       party_ids: partyIds,
     });

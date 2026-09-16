@@ -2,7 +2,7 @@
 
 import { useAnonymousAuth } from '@/components/anonymous-auth';
 import { useChatStore } from '@/components/providers/chat-store-provider';
-import { listenToStudyStatus } from '@/lib/firebase/firebase';
+import { useStudyRunning } from '@/components/providers/study-status-provider';
 import { isStudyContext } from '@/lib/pledge-study/study-config';
 import { isProlificStudy } from '@/lib/prolific-study/prolific-metadata';
 import { useEffect, useState } from 'react';
@@ -34,13 +34,17 @@ function ChatStudyWrapper() {
 
   const inStudyContext = isStudyContext(contextId);
 
-  // Kill switch: subscribe only where the study can apply at all.
+  // The kill switch is subscribed once, app-wide, by StudyStatusProvider.
+  // Mirror it into the store only once it is actually known: leaving
+  // studyEnabled undefined until then is what stops a control-group user
+  // seeing a flash of PledgeTracker (see gate.ts).
+  const studyRunning = useStudyRunning();
   useEffect(() => {
-    if (!inStudyContext) {
+    if (!inStudyContext || studyRunning === undefined) {
       return;
     }
-    return listenToStudyStatus(({ enabled }) => setStudyEnabled(enabled));
-  }, [inStudyContext, setStudyEnabled]);
+    setStudyEnabled(studyRunning);
+  }, [inStudyContext, studyRunning, setStudyEnabled]);
 
   // Load the participant record once per uid (consent stickiness).
   useEffect(() => {

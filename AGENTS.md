@@ -299,6 +299,90 @@ UI copy says "Ziele", not "Versprechen"; the events' full source text is never
 stored (`url`/`title` suffice); the chat-side lookup is best-effort and may
 return nothing (the UI then shows no PledgeTracker entry point).
 
+#### The PledgeTracker study (consent, cohorts, questionnaire)
+
+An in-app experiment with the Vlachos group (University of Cambridge): does
+PledgeTracker change users' willingness to engage in political debate?
+
+- **Scope**: only `abgeordnetenhauswahl-berlin-2026` and
+  `landtagswahl-mecklenburg-vorpommern-2026` — `STUDY_CONTEXT_IDS` in
+  `web/lib/pledge-study/study-config.ts`, which also holds the prompt-timing
+  constants, the cohort hash, and the questionnaire form id. The shared
+  vocabulary (`StudyParticipation`, `StudyCohort`) lives in
+  `web/lib/pledge-study/types.ts`: **participation** says whether a user takes
+  part at all (`experimental` / `regular`), **cohort** says which arm a
+  participant is in (`control` / `manipulation`). "experimental" therefore
+  never means "sees the feature".
+- **Kill switch**: Firestore doc `system_status/pledge_study` `{enabled: true}`.
+  Missing doc/field/error = off (the safe default); flipping it is a console
+  edit, no deploy. The local emulator UI is disabled, so write the doc over
+  REST instead, with `-H 'Authorization: Bearer owner'` (plain writes are
+  refused by the rules).
+  The questionnaire form id is COMMITTED (`STUDY_QUESTIONNAIRE_FORM_ID` in
+  `web/lib/pledge-study/study-config.ts`), like every other Fillout form here,
+  so a fresh checkout and both deployments work with no env setup;
+  `NEXT_PUBLIC_STUDY_QUESTIONNAIRE_URL` only overrides it for a test form.
+- **Flow**: fresh chat in a study context → two-stage consent (short ask, then
+  the Einverständniserklärung). A „Nein" is permanent per uid, and dismissing
+  the dialog (Escape, overlay click, drawer swipe) is recorded as that same
+  „Nein" — only an explicit „Ja" enrols, and everyone who was asked leaves a
+  record, so the consent denominator is complete. A „Ja" assigns the cohort —
+  deterministic hash(uid+salt), p=0.5 — and persists `study_participants/{uid}`
+  with `participation`, `cohort` and `assignment_source` (the analysis source
+  of truth). NEVER change the salt while the study runs.
+  Both answers also record `context_id` and `party_ids` (the parties selected
+  when the ask appeared), so non-response can be modelled rather than just
+  counted — refusal by election, and by the party the user came to chat with.
+- **Gate** (`web/lib/pledge-study/gate.ts`): in a study context with the study
+  on, ONLY consented participants in the `manipulation` arm see PledgeTracker.
+  Control and non-consented users see nothing — pre-exposure would contaminate a later
+  control assignment. Outside the study contexts the product is unchanged.
+- **Telemetry** (consent-gated, `recordStudyEvent`): append-only `events` on
+  the participant doc — `first_message`, `first_answer_completed`,
+  `pledge_shown` (viewport exposure), `pledge_modal_open`/`_close`,
+  `prompt_shown`/`prompt_dismissed` (with trigger), `questionnaire_clicked`.
+  Counts and firsts are derived from the log at analysis time.
+- **Questionnaire prompts** (identical for both cohorts — control symmetry):
+  a timer 15s after the FIRST completed answer (an open pledge modal delays
+  it; a streaming follow-up does not), an immediate prompt on pledge-modal
+  close, and a 90s longstop inside a modal;
+  max 2 prompts ever, cap survives reloads. The form opens IN-APP via
+  `FilloutPopupEmbed` (same pattern as `survey-banner.tsx`), carrying
+  `user_id` + `chat_session_id` as parameters; trigger/context stay in the
+  event log, and the cohort is never passed (no self-unblinding). While the
+  study is on, the study questionnaire is the ONLY thing anyone is asked for,
+  app-wide: `StudyStatusProvider` holds one kill-switch subscription and
+  `useStudyRunning()` suppresses the general feedback banner, the newsletter
+  step after login, and the Wahl-Swiper feedback card. The rule ignores the
+  cohort and consent, so no arm is exposed differently, and everything returns
+  the moment the kill switch goes off.
+- **Analysis joins**: `study_participants/{uid}` ↔ `chat_sessions.user_id`
+  (sessions are also stamped `study_cohort` + `is_pledge_study`) ↔
+  `page_visits.user_id`/`chat_session_ids` (dwell time) ↔ the questionnaire's
+  `user_id` + `chat_session_id` answers. The uid is the Firebase anonymous uid
+  throughout.
+- **Forcing a variant** (`web/lib/pledge-study/variant-override.ts`): append
+  `?sg=a` (consented control), `?sg=b` (consented manipulation), `?sg=x`
+  (declined) in a study context; `?sg=off` clears it. Works in dev AND prod,
+  including before launch — an override also forces the study on for that
+  browser, client-side only, so the prod kill switch being off does not block
+  testing. The values are opaque so a participant cannot read their arm off the
+  URL; there is deliberately no signing or validation, since the repo is public
+  and the bundle is inspectable. Persisted per tab in sessionStorage, ignored
+  for Prolific participants.
+  **Forced rows are flagged** `assignment_source: 'override'` (plus
+  `override_variant`, `override_at`) and MUST be excluded from analysis. The
+  flag write touches marker fields ONLY, never `consent_answer`/`cohort`, so
+  it cannot destroy a real record — but **use a fresh browser profile**: an
+  override link opened in a genuine participant's profile flags that
+  participant out of the study. Two caveats: an override link bypasses the kill
+  switch, and variants a/b can submit the real questionnaire, which Fillout
+  records without the flag (cross-reference on `user_id` to exclude).
+- Known simplifications: the idle predicate tracks streaming and the pledge
+  modal (not every uncontrolled dialog); the kill switch is client-read only
+  (default-off hides everything until the snapshot arrives); a second device
+  is a new participant (anonymous auth — accepted trade-off).
+
 De-dup with AW is two-way and party+region+date scoped: an upload is skipped if AW
 already has that party's programme; once AW ingests it, its `post_upsert` deletes
 the uploaded twin.

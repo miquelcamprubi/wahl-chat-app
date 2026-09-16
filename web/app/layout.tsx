@@ -14,6 +14,7 @@ import './globals.css';
 // it the text layer flows below the canvas instead of overlaying it.
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import PageVisitProvider from '@/components/providers/page-visit-provider';
+import StudyStatusProvider from '@/components/providers/study-status-provider';
 import TenantProvider from '@/components/providers/tenant-provider';
 import { TENANT_ID_HEADER } from '@/lib/constants';
 import { socialMediaConfig } from '@/lib/contact-config';
@@ -189,7 +190,9 @@ export default async function RootLayout({
                   enableSystem={!IS_EMBEDDED}
                   disableTransitionOnChange
                 >
-                  <MediaViewerProvider>{children}</MediaViewerProvider>
+                  <StudyStatusProvider>
+                    <MediaViewerProvider>{children}</MediaViewerProvider>
+                  </StudyStatusProvider>
                 </ThemeProvider>
                 <Toaster expand duration={1500} position="top-right" />
                 {/* <LoginReminderToast /> */}
